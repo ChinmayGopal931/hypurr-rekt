@@ -1,25 +1,56 @@
 // src/hooks/useHyperliquid.ts
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useAccount, useSignTypedData } from 'wagmi'
 import { hyperliquid, HyperliquidAsset, PriceFeed } from '@/service/hyperliquid'
-import { Asset } from '@/lib/types'
+import { hyperliquidOrders, OrderRequest, OrderResponse, PositionInfo } from '@/service/hyperliquidOrders'
+
+export interface Asset {
+  id: string
+  name: string
+  symbol: string
+  price: number
+  change24h: number
+}
 
 export interface UseHyperliquidReturn {
+  // Price feed data
   assets: Asset[]
   isLoading: boolean
   error: string | null
   isConnected: boolean
   lastUpdate: Date | null
+  
+  // Wallet & Orders
+  address: string | undefined
+  isWalletConnected: boolean
+  placePredictionOrder: (request: OrderRequest) => Promise<OrderResponse>
+  cancelOrder: (asset: string, orderId: string) => Promise<boolean>
+  onPositionResult: (cloid: string, callback: (result: 'win' | 'loss', exitPrice: number) => void) => void
+  getActivePositions: () => PositionInfo[]
+  getPosition: (cloid: string) => PositionInfo | undefined
+  clearCompletedPositions: () => void
+  setNetwork: (useTestnet: boolean) => void
+  
+  // Current prices for order placement
+  getCurrentPrice: (symbol: string) => number | null
 }
 
 export function useHyperliquid(): UseHyperliquidReturn {
+  // Price feed state
   const [assets, setAssets] = useState<Asset[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   
+  // Wagmi hooks for wallet connectivity
+  const { address, isConnected: isWalletConnected } = useAccount()
+  const { signTypedDataAsync } = useSignTypedData()
+  
+  // Refs for price tracking
   const assetsMetadataRef = useRef<HyperliquidAsset[]>([])
   const previousPricesRef = useRef<{ [symbol: string]: number }>({})
+  const currentPricesRef = useRef<{ [symbol: string]: number }>({})
 
   // Calculate 24h change (mock for now since we don't have historical data)
   const calculate24hChange = (symbol: string, currentPrice: number): number => {
@@ -33,16 +64,34 @@ export function useHyperliquid(): UseHyperliquidReturn {
     return ((currentPrice - previousPrice) / previousPrice) * 100
   }
 
+  // Get current price for a symbol
+  const getCurrentPrice = useCallback((symbol: string): number | null => {
+    return currentPricesRef.current[symbol] || null
+  }, [])
+
   // Transform Hyperliquid data to our Asset format
   const transformAssets = (metadata: HyperliquidAsset[], prices: PriceFeed): Asset[] => {
+    const popularAssets = ['BTC', 'ETH', 'SOL', 'ARB', 'DOGE'] // Priority assets to show first
+    
     return metadata
       .filter(asset => prices[asset.name]) // Only include assets with price data
-      .map((asset, index) => {
+      .sort((a, b) => {
+        // Sort by popularity first, then alphabetically
+        const aIndex = popularAssets.indexOf(a.name)
+        const bIndex = popularAssets.indexOf(b.name)
+        
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+        if (aIndex !== -1) return -1
+        if (bIndex !== -1) return 1
+        return a.name.localeCompare(b.name)
+      })
+      .map((asset) => {
         const currentPrice = parseFloat(prices[asset.name])
         const change24h = calculate24hChange(asset.name, currentPrice)
         
-        // Store current price for next calculation
+        // Store current price for calculations and order placement
         previousPricesRef.current[asset.name] = currentPrice
+        currentPricesRef.current[asset.name] = currentPrice
 
         return {
           id: asset.name,
@@ -52,7 +101,7 @@ export function useHyperliquid(): UseHyperliquidReturn {
           change24h: change24h
         }
       })
-      .slice(0, 5) // Limit to top 3 assets for better UX
+      .slice(0, 8) // Show top 8 assets
   }
 
   // Get display name for asset
@@ -61,9 +110,106 @@ export function useHyperliquid(): UseHyperliquidReturn {
       'BTC': 'Bitcoin',
       'ETH': 'Ethereum', 
       'SOL': 'Solana',
+      'ARB': 'Arbitrum',
+      'DOGE': 'Dogecoin',
+      'AVAX': 'Avalanche',
+      'LINK': 'Chainlink',
+      'UNI': 'Uniswap'
     }
     return names[symbol] || symbol
   }
+
+  // Order placement function using agent system
+  const placePredictionOrder = useCallback(async (request: OrderRequest): Promise<OrderResponse> => {
+    if (!isWalletConnected || !address) {
+      return {
+        success: false,
+        error: 'Wallet not connected'
+      }
+    }
+
+    if (!signTypedDataAsync) {
+      return {
+        success: false,
+        error: 'Unable to sign transactions'
+      }
+    }
+
+    try {
+      // Use current market price if not specified
+      if (!request.price || request.price === 0) {
+        const currentPrice = getCurrentPrice(request.asset)
+        if (!currentPrice) {
+          return {
+            success: false,
+            error: `No current price available for ${request.asset}`
+          }
+        }
+        request.price = currentPrice
+      }
+
+      console.log("Placing prediction order:", {
+        request,
+        address
+      })
+
+      // Use agent system for order placement
+      return await hyperliquidOrders.placePredictionOrder(
+        request,
+        signTypedDataAsync,
+        address
+      )
+    } catch (error: any) {
+      console.error('Order placement failed:', error)
+      return {
+        success: false,
+        error: error.message || 'Unknown error occurred'
+      }
+    }
+  }, [isWalletConnected, address, signTypedDataAsync, getCurrentPrice])
+
+  // Cancel order function using agent system
+  const cancelOrder = useCallback(async (asset: string, orderId: string): Promise<boolean> => {
+    if (!isWalletConnected || !signTypedDataAsync || !address) {
+      return false
+    }
+
+    try {
+      // Pass address to cancelOrder for agent system
+      return await hyperliquidOrders.cancelOrder(asset, orderId, signTypedDataAsync, address)
+    } catch (error) {
+      console.error('Order cancellation failed:', error)
+      return false
+    }
+  }, [isWalletConnected, signTypedDataAsync, address])
+
+  // Position result callback
+  const onPositionResult = useCallback((
+    cloid: string, 
+    callback: (result: 'win' | 'loss', exitPrice: number) => void
+  ) => {
+    hyperliquidOrders.onPositionResult(cloid, callback)
+  }, [])
+
+  // Get active positions
+  const getActivePositions = useCallback((): PositionInfo[] => {
+    return hyperliquidOrders.getActivePositions()
+  }, [])
+
+  // Get position by cloid
+  const getPosition = useCallback((cloid: string): PositionInfo | undefined => {
+    return hyperliquidOrders.getPosition(cloid)
+  }, [])
+
+  // Clear completed positions
+  const clearCompletedPositions = useCallback(() => {
+    hyperliquidOrders.clearCompletedPositions()
+  }, [])
+
+  // Set network
+  const setNetwork = useCallback((useTestnet: boolean) => {
+    hyperliquidOrders.setNetwork(useTestnet)
+  }, [])
 
   // Fetch asset metadata
   useEffect(() => {
@@ -151,10 +297,25 @@ export function useHyperliquid(): UseHyperliquidReturn {
   }, [lastUpdate])
 
   return {
+    // Price feed data
     assets,
     isLoading,
     error,
     isConnected,
-    lastUpdate
+    lastUpdate,
+    
+    // Wallet & Orders
+    address,
+    isWalletConnected,
+    placePredictionOrder,
+    cancelOrder,
+    onPositionResult,
+    getActivePositions,
+    getPosition,
+    clearCompletedPositions,
+    setNetwork,
+    
+    // Utility
+    getCurrentPrice
   }
 }

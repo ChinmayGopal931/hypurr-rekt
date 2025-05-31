@@ -14,9 +14,7 @@ import { Badge } from './ui/badge'
 import { Alert, AlertDescription } from './ui/alert'
 import { Button } from './ui/button'
 import { WalletConnection } from './WalletConnection'
-import { useWalletOrders } from '@/hooks/useWalletOrders'
-import { hyperliquidOrders } from '@/service/hyperliquidOrders'
-
+import { AgentStatus } from './AgentStatus'
 
 interface GameInterfaceProps {
   gameState: GameState
@@ -41,19 +39,39 @@ export function GameInterface({
   const [timeWindow, setTimeWindow] = useState<number>(30)
   const [countdownTime, setCountdownTime] = useState<number>(0)
   const [walletReady, setWalletReady] = useState(false)
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false)
+  const [orderError, setOrderError] = useState<string | null>(null)
 
-  // Hyperliquid market data
-  const { assets, isLoading, error, isConnected, lastUpdate } = useHyperliquid()
-  
-  // Wallet and order management
-  const {
-    wallet,
-    isPlacingOrder,
-    orderError,
-    activePositions,
+  // Consolidated Hyperliquid hook with all functionality
+  const { 
+    // Price feed data
+    assets, 
+    isLoading, 
+    error, 
+    isConnected: hlConnected, 
+    lastUpdate,
+    
+    // Wallet & orders
+    isWalletConnected,
+    address,
     placePredictionOrder,
-    canPlaceOrder
-  } = useWalletOrders()
+    onPositionResult,
+    getActivePositions,
+    getCurrentPrice
+  } = useHyperliquid()
+
+  // Get active positions
+  const activePositions = getActivePositions()
+
+  // Determine if user can place orders
+  const canPlaceOrder = Boolean(
+    isWalletConnected && 
+    address &&
+    !isPlacingOrder && 
+    activePositions.length === 0 &&
+    !orderError &&
+    hlConnected
+  )
 
   // Set default selected asset when assets load
   useEffect(() => {
@@ -73,57 +91,93 @@ export function GameInterface({
     }
   }, [assets, selectedAsset?.id])
 
+  // Clear order error when active positions change
+  useEffect(() => {
+    if (activePositions.length === 0) {
+      setOrderError(null)
+    }
+  }, [activePositions.length])
+
   // Handle real prediction order placement
   const handlePrediction = async (direction: 'up' | 'down') => {
     if (!selectedAsset || !canPlaceOrder) return
 
     try {
+      setIsPlacingOrder(true)
+      setOrderError(null)
       setGameState('countdown')
       setCountdownTime(3)
       
       // Wait for countdown to complete before placing order
       setTimeout(async () => {
-        const orderRequest = {
-          asset: selectedAsset.id,
-          direction,
-          price: selectedAsset.price,
-          size: '10', // $10 fixed size
-          timeWindow
-        }
+        try {
+          const currentPrice = getCurrentPrice(selectedAsset.id)
+          if (!currentPrice) {
+            throw new Error(`No current price available for ${selectedAsset.id}`)
+          }
 
-        const response = await placePredictionOrder(orderRequest)
-        
-        if (response.success && response.fillInfo?.filled) {
-          // Order filled successfully - create prediction tracking
-          const prediction: Prediction = {
-            id: response.cloid || Date.now().toString(),
-            asset: selectedAsset,
+          const orderRequest = {
+            asset: selectedAsset.id,
             direction,
-            entryPrice: response.fillInfo.fillPrice || selectedAsset.price,
-            timeWindow,
-            timestamp: Date.now()
+            price: currentPrice, // Use real-time price
+            size: '10', // $10 fixed size
+            timeWindow
           }
+
+          console.log('Placing prediction order:', orderRequest)
+          const response = await placePredictionOrder(orderRequest)
           
-          setCurrentPrediction(prediction)
-          setGameState('active')
-          
-          // Register for position outcome callback
-          if (response.cloid) {
-            hyperliquidOrders.onPositionResult(response.cloid, (result, exitPrice) => {
-              handleGameComplete(result, exitPrice)
+          if (response.success && response.fillInfo?.filled) {
+            // Order filled successfully - create prediction tracking
+            const prediction: Prediction = {
+              id: response.cloid || Date.now().toString(),
+              asset: selectedAsset,
+              direction,
+              entryPrice: response.fillInfo.fillPrice || currentPrice,
+              timeWindow,
+              timestamp: Date.now()
+            }
+            
+            setCurrentPrediction(prediction)
+            setGameState('active')
+            setOrderError(null)
+            
+            console.log('Order placed successfully:', {
+              orderId: response.orderId,
+              cloid: response.cloid,
+              fillPrice: response.fillInfo.fillPrice
             })
+            
+            // Register for position outcome callback
+            if (response.cloid) {
+              onPositionResult(response.cloid, (result, exitPrice) => {
+                handleGameComplete(result, exitPrice)
+              })
+            }
+            
+          } else {
+            // Order failed or not filled
+            const errorMessage = response.error || 'Order was not filled'
+            setOrderError(errorMessage)
+            setGameState('idle')
+            console.error('Order placement failed:', errorMessage)
           }
-          
-        } else {
-          // Order failed or not filled
+        } catch (error: any) {
+          const errorMessage = error.message || 'Failed to place order'
+          setOrderError(errorMessage)
           setGameState('idle')
-          console.error('Order placement failed:', response.error)
+          console.error('Order placement error:', error)
+        } finally {
+          setIsPlacingOrder(false)
         }
       }, 3000) // 3 second countdown
       
-    } catch (error) {
-      console.error('Prediction placement failed:', error)
+    } catch (error: any) {
+      const errorMessage = error.message || 'Failed to initiate order'
+      setOrderError(errorMessage)
       setGameState('idle')
+      setIsPlacingOrder(false)
+      console.error('Prediction initiation failed:', error)
     }
   }
 
@@ -155,6 +209,8 @@ export function GameInterface({
     newStats.winRate = (newStats.wins / newStats.totalGames) * 100
     setGameStats(newStats)
 
+    console.log(`Trade completed: ${result.toUpperCase()} at $${exitPrice}`)
+
     // Auto-reset after showing result
     setTimeout(() => {
       setGameState('idle')
@@ -164,6 +220,13 @@ export function GameInterface({
 
   const handleRefresh = () => {
     window.location.reload()
+  }
+
+  // Clear error when user clicks anywhere
+  const clearError = () => {
+    if (gameState === 'idle') {
+      setOrderError(null)
+    }
   }
 
   // Loading state
@@ -230,15 +293,18 @@ export function GameInterface({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onClick={clearError}>
       {/* Wallet Connection */}
       <WalletConnection onWalletReady={() => setWalletReady(true)} />
+
+      {/* Agent Status */}
+      <AgentStatus userAddress={address} isConnected={isWalletConnected} />
 
       {/* Connection Status */}
       <Card className="p-4 bg-slate-900/50 border-slate-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {isConnected ? (
+            {hlConnected ? (
               <>
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -265,11 +331,16 @@ export function GameInterface({
           </div>
           
           <div className="flex items-center space-x-4">
-            {wallet?.isConnected && (
-              <Badge variant="outline" className="text-blue-400 border-blue-400">
-                <DollarSign className="w-3 h-3 mr-1" />
-                $10 per trade
-              </Badge>
+            {isWalletConnected && (
+              <>
+                <Badge variant="outline" className="text-blue-400 border-blue-400">
+                  <DollarSign className="w-3 h-3 mr-1" />
+                  $10 per trade
+                </Badge>
+                <Badge variant="outline" className="text-green-400 border-green-400">
+                  Wallet Connected
+                </Badge>
+              </>
             )}
             {lastUpdate && (
               <div className="text-xs text-slate-500">
@@ -287,6 +358,14 @@ export function GameInterface({
           <AlertDescription className="text-red-400">
             <div className="font-semibold mb-1">Order Failed</div>
             <div className="text-sm">{orderError}</div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-2 text-red-400 border-red-400 hover:bg-red-400/10"
+              onClick={() => setOrderError(null)}
+            >
+              Dismiss
+            </Button>
           </AlertDescription>
         </Alert>
       )}
@@ -301,12 +380,19 @@ export function GameInterface({
               You have {activePositions.length} active position(s). 
               Wait for it to close before placing a new prediction.
             </div>
+            <div className="mt-2 space-y-1">
+              {activePositions.map(position => (
+                <div key={position.cloid} className="text-xs bg-blue-500/20 rounded p-2">
+                  {position.asset} {position.direction.toUpperCase()} - Entry: ${position.entryPrice}
+                </div>
+              ))}
+            </div>
           </AlertDescription>
         </Alert>
       )}
 
       {/* Price Display */}
-      {selectedAsset && wallet?.isConnected && (
+      {selectedAsset && isWalletConnected && (
         <Card className="p-6 bg-slate-900/50 border-slate-800">
           <PriceDisplay 
             asset={selectedAsset}
@@ -317,7 +403,7 @@ export function GameInterface({
       )}
 
       {/* Game Controls - Only show if wallet connected */}
-      {wallet?.isConnected && (gameState === 'idle' || gameState === 'countdown') && (
+      {isWalletConnected && (gameState === 'idle' || gameState === 'countdown') && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card className="p-6 bg-slate-900/50 border-slate-800">
             <AssetSelector
@@ -339,21 +425,29 @@ export function GameInterface({
       )}
 
       {/* Prediction Buttons or Game Status */}
-      {wallet?.isConnected && (
+      {isWalletConnected && (
         <Card className="p-6 bg-slate-900/50 border-slate-800">
           {gameState === 'idle' && (
             <PredictionButtons
               onPredict={handlePrediction}
-              disabled={!selectedAsset || !isConnected || !canPlaceOrder || isPlacingOrder}
+              disabled={!selectedAsset || !hlConnected || !canPlaceOrder || isPlacingOrder}
             />
           )}
           
           {gameState === 'countdown' && (
-            <GameTimer
-              initialTime={countdownTime}
-              onComplete={() => {}} // Handled in handlePrediction
-              type="countdown"
-            />
+            <div className="text-center space-y-4">
+              <div className="text-2xl font-bold text-white">
+                Placing Order...
+              </div>
+              <GameTimer
+                initialTime={countdownTime}
+                onComplete={() => {}} // Handled in handlePrediction
+                type="countdown"
+              />
+              <div className="text-sm text-slate-400">
+                {isPlacingOrder ? 'Sending order to Hyperliquid...' : 'Get ready!'}
+              </div>
+            </div>
           )}
           
           {gameState === 'active' && currentPrediction && selectedAsset && (

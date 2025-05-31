@@ -1,7 +1,7 @@
 // src/services/hyperliquidOrders.ts
 import { ethers } from 'ethers'
-import { walletService } from './wallet'
 import { hyperliquid } from './hyperliquid'
+import { hyperliquidAgent, AgentWallet } from './hyperLiquidAgent'
 
 export interface OrderRequest {
   asset: string
@@ -45,12 +45,79 @@ export interface HyperliquidSignature {
   v: number
 }
 
+export interface AssetConfig {
+  assetId: number
+  szDecimals: number
+  maxLeverage: number
+}
+
+// Wagmi/RainbowKit compatible signature function type
+export type SignTypedDataFunction = (args: {
+  domain: any
+  types: any
+  primaryType: string
+  message: any
+}) => Promise<string>
+
 export class HyperliquidOrderService {
   private static readonly TESTNET_API = 'https://api.hyperliquid-testnet.xyz'
+  private static readonly MAINNET_API = 'https://api.hyperliquid.xyz'
   private static readonly FIXED_USD_SIZE = 10 // $10 per prediction
   
+  private useTestnet: boolean = true
   private activePositions: Map<string, PositionInfo> = new Map()
   private positionCallbacks: Map<string, (result: 'win' | 'loss', exitPrice: number) => void> = new Map()
+
+  constructor(useTestnet: boolean = true) {
+    this.useTestnet = useTestnet
+  }
+
+  private getApiUrl(): string {
+    return this.useTestnet ? HyperliquidOrderService.TESTNET_API : HyperliquidOrderService.MAINNET_API
+  }
+
+  /**
+   * Initialize agent wallet for the user
+   */
+  async initializeAgent(
+    userAddress: string,
+    masterSignTypedData: SignTypedDataFunction
+  ): Promise<AgentWallet> {
+    console.log('🔍 Checking for existing agent for user:', userAddress)
+    
+    // Try to load existing agent
+    let agent = hyperliquidAgent.loadAgent(userAddress)
+    
+    if (!agent || !agent.isApproved) {
+      console.log('🔧 No approved agent found, creating new one...')
+      
+      // Generate new agent
+      agent = hyperliquidAgent.generateAgentWallet()
+      console.log('✅ Generated new agent wallet:', agent.address)
+      
+      // Approve agent with master account
+      console.log('🔍 Requesting agent approval from user...')
+      const approved = await hyperliquidAgent.approveAgent(
+        agent,
+        masterSignTypedData,
+        'GameAgent'
+      )
+      
+      if (!approved) {
+        throw new Error('Failed to approve agent wallet')
+      }
+      
+      console.log('✅ Agent approved successfully!')
+      
+      // Save agent for future use
+      hyperliquidAgent.saveAgent(userAddress)
+      console.log('✅ Agent saved to localStorage')
+    } else {
+      console.log('✅ Using existing approved agent:', agent.address)
+    }
+    
+    return agent
+  }
 
   /**
    * Generate a unique client order ID
@@ -82,12 +149,24 @@ export class HyperliquidOrderService {
   }
 
   /**
-   * Get asset configuration from metadata
+   * Get asset configuration from metadata via direct API call
    */
-  private async getAssetConfig(assetSymbol: string) {
+  private async getAssetConfig(assetSymbol: string): Promise<AssetConfig> {
     try {
-      const metadata = await hyperliquid.fetchPerpetualMeta()
-      const asset = metadata.universe.find(a => a.name === assetSymbol)
+      const response = await fetch(`${this.getApiUrl()}/info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'meta' })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch perpetual metadata: ${response.status}`)
+      }
+
+      const metadata = await response.json()
+      const asset = metadata.universe.find((a: any) => a.name === assetSymbol)
       
       if (!asset) {
         throw new Error(`Asset ${assetSymbol} not found`)
@@ -106,62 +185,33 @@ export class HyperliquidOrderService {
   }
 
   /**
-   * Create EIP-712 signature for Hyperliquid order
+   * Place a prediction order using agent wallet system
    */
-  private async signOrder(orderData: any): Promise<HyperliquidSignature> {
-    const signer = walletService.getSigner()
-    if (!signer) {
-      throw new Error('No wallet connected')
-    }
-
-    // Hyperliquid EIP-712 domain
-    const domain = {
-      name: 'HyperliquidTestnet', // Use testnet domain
-      version: '1',
-      chainId: 421614, // Arbitrum testnet
-      verifyingContract: '0x0000000000000000000000000000000000000000'
-    }
-
-    // Order type definition
-    const types = {
-      Order: [
-        { name: 'asset', type: 'uint32' },
-        { name: 'isBuy', type: 'bool' },
-        { name: 'limitPx', type: 'uint64' },
-        { name: 'sz', type: 'uint64' },
-        { name: 'reduceOnly', type: 'bool' },
-        { name: 'orderType', type: 'uint8' }
-      ],
-      Agent: [
-        { name: 'source', type: 'string' },
-        { name: 'connectionId', type: 'bytes32' }
-      ]
-    }
-
+  async placePredictionOrder(
+    request: OrderRequest,
+    signTypedDataAsync: SignTypedDataFunction,
+    userAddress: string
+  ): Promise<OrderResponse> {
     try {
-      const signature = await walletService.signTypedData(domain, types, orderData)
-      
-      // Parse signature into r, s, v components
-      const sig = ethers.Signature.from(signature)
-      
-      return {
-        r: sig.r,
-        s: sig.s,
-        v: sig.v
-      }
-    } catch (error) {
-      throw new Error(`Failed to sign order: ${error}`)
-    }
-  }
-
-  /**
-   * Place a prediction order
-   */
-  async placePredictionOrder(request: OrderRequest): Promise<OrderResponse> {
-    try {
-      const wallet = await walletService.getWalletInfo()
-      if (!wallet?.isConnected) {
+      if (!userAddress) {
         throw new Error('Wallet not connected')
+      }
+
+      // Ensure address is lowercase (important for Hyperliquid)
+      const address = userAddress.toLowerCase()
+
+      // Initialize agent wallet (or use existing one)
+      let agent: AgentWallet
+      try {
+        console.log('🔍 Initializing agent for user:', address)
+        agent = await this.initializeAgent(address, signTypedDataAsync)
+        console.log('✅ Agent initialized:', agent.address, 'Approved:', agent.isApproved)
+      } catch (error) {
+        console.error('❌ Agent initialization failed:', error)
+        return {
+          success: false,
+          error: `Agent setup failed: ${error}`
+        }
       }
 
       // Get asset configuration
@@ -172,41 +222,49 @@ export class HyperliquidOrderService {
       const limitPrice = this.formatPrice(request.price, assetConfig.szDecimals)
       const cloid = this.generateCloid()
       
-      // Create order object
+      // Create order object in Hyperliquid wire format
       const order = {
-        a: assetConfig.assetId, // Asset ID
+        a: assetConfig.assetId, // asset
         b: request.direction === 'up', // isBuy (true for UP/LONG)
-        p: limitPrice, // Limit price
-        s: orderSize, // Size
+        p: limitPrice, // price as string
+        s: orderSize, // size as string  
         r: false, // reduceOnly (false for opening position)
         t: { limit: { tif: "Ioc" } }, // IOC order type
-        c: cloid // Client order ID
+        c: cloid // client order ID
       }
 
-      // Create signature data
-      const orderData = {
-        asset: assetConfig.assetId,
-        isBuy: request.direction === 'up',
-        limitPx: Math.round(parseFloat(limitPrice) * 1e6), // Convert to uint64
-        sz: Math.round(parseFloat(orderSize) * Math.pow(10, assetConfig.szDecimals)),
-        reduceOnly: false,
-        orderType: 2 // IOC type
-      }
-
-      // Sign the order
-      const signature = await this.signOrder(orderData)
-
-      // Prepare exchange request
-      const exchangeRequest = {
+      // Create the complete action
+      const action = {
         type: 'order',
         orders: [order],
-        grouping: 'na',
-        nonce: Date.now(),
-        signature: signature
+        grouping: 'na'
       }
 
-      // Send order to Hyperliquid
-      const response = await fetch(`${HyperliquidOrderService.TESTNET_API}/exchange`, {
+      const nonce = Date.now()
+
+      // Sign using agent wallet (can use chainId 1337)
+      console.log('🔍 Signing order with agent...')
+      const signature = await hyperliquidAgent.signL1ActionWithAgent(action, nonce, address)
+      console.log('✅ Order signed with agent')
+
+      // Prepare exchange request in API format
+      const exchangeRequest = {
+        action: action,
+        nonce: nonce,
+        signature: signature,
+        vaultAddress: address // Trade on behalf of master account
+      }
+
+      console.log('Sending order request with agent:', {
+        action: action,
+        nonce: nonce,
+        masterAddress: address,
+        agentAddress: agent.address,
+        cloid: cloid
+      })
+
+      // Send order to Hyperliquid exchange endpoint
+      const response = await fetch(`${this.getApiUrl()}/exchange`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -215,7 +273,8 @@ export class HyperliquidOrderService {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
 
       const result = await response.json()
@@ -224,7 +283,7 @@ export class HyperliquidOrderService {
         throw new Error(`Order failed: ${JSON.stringify(result)}`)
       }
 
-      // Process order response
+      // Process order response based on API documentation
       const orderStatus = result.response?.data?.statuses?.[0]
       
       if (orderStatus?.filled) {
@@ -291,6 +350,83 @@ export class HyperliquidOrderService {
   }
 
   /**
+   * Cancel an order using agent wallet system
+   */
+  async cancelOrder(
+    asset: string, 
+    orderId: string,
+    signTypedDataAsync: SignTypedDataFunction,
+    userAddress: string
+  ): Promise<boolean> {
+    try {
+      // Ensure agent is initialized
+      const agent = await this.initializeAgent(userAddress, signTypedDataAsync)
+      
+      const assetConfig = await this.getAssetConfig(asset)
+      
+      const action = {
+        type: 'cancel',
+        cancels: [{
+          a: assetConfig.assetId, // asset
+          o: parseInt(orderId) // order id
+        }]
+      }
+
+      const nonce = Date.now()
+      const signature = await hyperliquidAgent.signL1ActionWithAgent(action, nonce, userAddress.toLowerCase())
+
+      const cancelRequest = {
+        action: action,
+        nonce: nonce,
+        signature: signature,
+        vaultAddress: userAddress.toLowerCase()
+      }
+
+      const response = await fetch(`${this.getApiUrl()}/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cancelRequest)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const result = await response.json()
+      return result.status === 'ok'
+    } catch (error) {
+      console.error('Order cancellation failed:', error)
+      return false
+    }
+  }
+
+  /**
+   * Get current market prices via direct API
+   */
+  private async getCurrentPrices(): Promise<{ [asset: string]: number }> {
+    return new Promise((resolve) => {
+      let prices: { [asset: string]: number } = {}
+      
+      const handlePriceUpdate = (priceData: { [symbol: string]: string }) => {
+        for (const [symbol, priceStr] of Object.entries(priceData)) {
+          prices[symbol] = parseFloat(priceStr)
+        }
+        resolve(prices)
+      }
+
+      // Subscribe temporarily to get current prices
+      hyperliquid.subscribeToAllMids(handlePriceUpdate)
+      
+      // Fallback timeout
+      setTimeout(() => {
+        resolve(prices)
+      }, 5000)
+    })
+  }
+
+  /**
    * Schedule automatic position closing
    */
   private scheduleAutoClose(cloid: string, timeWindow: number): void {
@@ -347,30 +483,6 @@ export class HyperliquidOrderService {
   }
 
   /**
-   * Get current market prices
-   */
-  private async getCurrentPrices(): Promise<{ [asset: string]: number }> {
-    return new Promise((resolve) => {
-      let prices: { [asset: string]: number } = {}
-      
-      const handlePriceUpdate = (priceData: { [symbol: string]: string }) => {
-        for (const [symbol, priceStr] of Object.entries(priceData)) {
-          prices[symbol] = parseFloat(priceStr)
-        }
-        resolve(prices)
-      }
-
-      // Subscribe temporarily to get current prices
-      hyperliquid.subscribeToAllMids(handlePriceUpdate)
-      
-      // Fallback timeout
-      setTimeout(() => {
-        resolve(prices)
-      }, 5000)
-    })
-  }
-
-  /**
    * Register callback for position outcome
    */
   onPositionResult(cloid: string, callback: (result: 'win' | 'loss', exitPrice: number) => void): void {
@@ -401,7 +513,14 @@ export class HyperliquidOrderService {
       }
     }
   }
+
+  /**
+   * Set network (testnet/mainnet)
+   */
+  setNetwork(useTestnet: boolean): void {
+    this.useTestnet = useTestnet
+  }
 }
 
 // Global order service instance
-export const hyperliquidOrders = new HyperliquidOrderService()
+export const hyperliquidOrders = new HyperliquidOrderService(true) // Default to testnet

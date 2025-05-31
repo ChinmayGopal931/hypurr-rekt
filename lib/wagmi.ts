@@ -1,9 +1,24 @@
 // src/config/wagmi.ts
 import { getDefaultConfig } from '@rainbow-me/rainbowkit'
-import { arbitrum, arbitrumSepolia } from 'wagmi/chains'
+import { arbitrum } from 'wagmi/chains'
+import { Chain } from 'viem'
 
-// Custom Arbitrum testnet for Hyperliquid
-export const arbitrumTestnet = {
+// Hyperliquid testnet chain (chain ID 1337)
+// export const hyperliquidTestnet: Chain = {
+//   id: 1337,
+//   name: 'Hyperliquid Testnet',
+//   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+//   rpcUrls: {
+//     default: { http: ['http://localhost:8545'] }, // Local RPC for testnet
+//   },
+//   blockExplorers: {
+//     default: { name: 'Hyperliquid Explorer', url: 'https://app.hyperliquid-testnet.xyz' },
+//   },
+//   testnet: true,
+// } as const
+
+// Arbitrum Sepolia (backup/alternative)
+export const arbitrumTestnet: Chain = {
   id: 421614,
   name: 'Arbitrum Sepolia',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
@@ -17,10 +32,10 @@ export const arbitrumTestnet = {
 } as const
 
 export const config = getDefaultConfig({
-  appName: 'Hypurrekt - Price Pulse Rider',
-  projectId: 'YOUR_PROJECT_ID', // Get from https://cloud.walletconnect.com
-  chains: [arbitrumTestnet, arbitrum],
-  ssr: false, // If using Next.js, set to true
+  appName: 'Hypurrekt',
+  projectId: 'e4ad3f996b22e95e67357a293a238cb6', 
+  chains: [ arbitrumTestnet],
+  ssr: false, // Next.js SSR disabled for client-side wallet
 })
 
-export const HYPERLIQUID_CHAIN_ID = 421614 // Arbitrum testnet
+// export const HYPERLIQUID_CHAIN_ID = 1337 // Hyperliquid testnet chain ID
