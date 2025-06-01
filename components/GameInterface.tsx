@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from './ui/alert'
 import { Button } from './ui/button'
 import { WalletConnection } from './WalletConnection'
 import { AgentStatus } from './AgentStatus'
+import { DepositRequiredAlert } from './DepositAlert'
 
 interface GameInterfaceProps {
   gameState: GameState
@@ -41,6 +42,7 @@ export function GameInterface({
   const [walletReady, setWalletReady] = useState(false)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
+  const [needsDeposit, setNeedsDeposit] = useState(false)
 
   // Consolidated Hyperliquid hook with all functionality
   const { 
@@ -95,6 +97,7 @@ export function GameInterface({
   useEffect(() => {
     if (activePositions.length === 0) {
       setOrderError(null)
+      setNeedsDeposit(false)
     }
   }, [activePositions.length])
 
@@ -158,7 +161,15 @@ export function GameInterface({
           } else {
             // Order failed or not filled
             const errorMessage = response.error || 'Order was not filled'
-            setOrderError(errorMessage)
+            
+            // Check for deposit requirement
+            if (errorMessage === 'NEEDS_HYPERLIQUID_DEPOSIT') {
+              setNeedsDeposit(true)
+              setOrderError(null)
+            } else {
+              setOrderError(errorMessage)
+            }
+            
             setGameState('idle')
             console.error('Order placement failed:', errorMessage)
           }
@@ -226,6 +237,7 @@ export function GameInterface({
   const clearError = () => {
     if (gameState === 'idle') {
       setOrderError(null)
+      setNeedsDeposit(false)
     }
   }
 
@@ -368,6 +380,11 @@ export function GameInterface({
             </Button>
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Deposit Required Alert */}
+      {needsDeposit && (
+        <DepositRequiredAlert onDismiss={() => setNeedsDeposit(false)} />
       )}
 
       {/* Active Position Alert */}

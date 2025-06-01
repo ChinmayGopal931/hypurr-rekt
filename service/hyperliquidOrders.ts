@@ -97,14 +97,17 @@ export class HyperliquidOrderService {
       
       // Approve agent with master account
       console.log('🔍 Requesting agent approval from user...')
-      const approved = await hyperliquidAgent.approveAgent(
+      const approvalResult = await hyperliquidAgent.approveAgent(
         agent,
         masterSignTypedData,
         'GameAgent'
       )
       
-      if (!approved) {
-        throw new Error('Failed to approve agent wallet')
+      if (!approvalResult.success) {
+        if (approvalResult.needsDeposit) {
+          throw new Error('NEEDS_DEPOSIT')
+        }
+        throw new Error(approvalResult.error || 'Failed to approve agent wallet')
       }
       
       console.log('✅ Agent approved successfully!')
@@ -208,6 +211,15 @@ export class HyperliquidOrderService {
         console.log('✅ Agent initialized:', agent.address, 'Approved:', agent.isApproved)
       } catch (error) {
         console.error('❌ Agent initialization failed:', error)
+        
+        // Check if the error is due to deposit requirement
+        if (error instanceof Error && error.message === 'NEEDS_DEPOSIT') {
+          return {
+            success: false,
+            error: 'NEEDS_HYPERLIQUID_DEPOSIT'
+          }
+        }
+        
         return {
           success: false,
           error: `Agent setup failed: ${error}`

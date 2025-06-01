@@ -104,7 +104,7 @@ export class HyperliquidAgentService {
     agentWallet: AgentWallet,
     masterSignTypedData: any,
     agentName: string = 'GameAgent'
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string; needsDeposit?: boolean }> {
     try {
       const nonce = Date.now()
       
@@ -153,14 +153,30 @@ export class HyperliquidAgentService {
       if (result.status === 'ok') {
         agentWallet.isApproved = true
         console.log('✅ Agent approved successfully!')
-        return true
+        return { success: true }
       } else {
         console.error('❌ Agent approval failed:', result)
-        return false
+        
+        // Check for specific deposit requirement error
+        if (result.response && result.response.includes('Must deposit before performing actions')) {
+          return { 
+            success: false, 
+            needsDeposit: true,
+            error: 'You need to deposit funds to Hyperliquid before approving an agent wallet.'
+          }
+        }
+        
+        return { 
+          success: false, 
+          error: result.response || 'Agent approval failed'
+        }
       }
     } catch (error) {
       console.error('Error approving agent:', error)
-      return false
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      }
     }
   }
 
