@@ -76,89 +76,136 @@ export class HyperliquidAgentService {
     return this.agentWallet
   }
 
-  /**
-   * Sign user-signed action (FINAL FIX - matches Python SDK source exactly)
-   */
-  async approveAgent(
-    agentWallet: AgentWallet,
-    masterSigner: any, // Should be a signer that can sign EIP-712 messages
-    agentName: string = 'Hyper-rektAgent'
-  ): Promise<{ success: boolean; error?: string; needsDeposit?: boolean }> {
-    try {
-      if (!agentWallet.exchangeClient) {
-        throw new Error('Agent wallet not properly initialized')
-      }
+/**
+ * Approve agent using the master account's signature - SDK Compatible Version
+ */
+async approveAgent(
+  agentWallet: AgentWallet,
+  masterSignTypedData: any, // Wagmi signTypedDataAsync function
+  agentName: string = 'Hyper-rektAgent'
+): Promise<{ success: boolean; error?: string; needsDeposit?: boolean }> {
+  try {
+    console.log('🔐 Approving agent:', {
+      agentAddress: agentWallet.address,
+      agentName,
+      network: this.useTestnet ? 'testnet' : 'mainnet'
+    })
 
-      console.log('🔐 Approving agent:', {
-        agentAddress: agentWallet.address,
-        agentName,
-        network: this.useTestnet ? 'testnet' : 'mainnet'
-      })
+    // ✅ Import the signing function from the SDK
+    const { signUserSignedAction } = await import('@nktkas/hyperliquid/signing')
 
-      // First, ensure the agent wallet is registered with Hyperliquid
-      const registerResponse = await fetch(`${this.baseUrl}/register_agent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentAddress: agentWallet.address,
-          agentName,
-          nonce: Date.now()
+    const nonce = Date.now()
+
+    // ✅ Create action exactly like the SDK does
+    const action = {
+      agentAddress: agentWallet.address,
+      agentName: agentName || "", // SDK uses empty string as default
+      type: 'approveAgent',
+      hyperliquidChain: this.useTestnet ? 'Testnet' : 'Mainnet',
+      signatureChainId: this.useTestnet ? '0x66eee' : '0xa4b1',
+      nonce
+    }
+
+    console.log('🔐 Creating approval action:', action)
+
+    // ✅ Create a wallet adapter for the SDK
+    const walletAdapter = {
+      signTypedData: async (params: any) => {
+        return await masterSignTypedData({
+          domain: params.domain,
+          types: params.types,
+          primaryType: params.primaryType,
+          message: params.message
         })
-      });
-
-      if (!registerResponse.ok) {
-        const error = await registerResponse.json().catch(() => ({}));
-        console.error('❌ Failed to register agent wallet:', error);
-        
-        // If the wallet doesn't exist, we need to create it with a deposit
-        if (registerResponse.status === 400 && error.message?.includes('does not exist')) {
-          return { 
-            success: false, 
-            needsDeposit: true,
-            error: 'You need to deposit funds to Hyperliquid first to create your account.'
-          };
-        }
-        
-        throw new Error(error.message || 'Failed to register agent wallet');
-      }
-
-      // Now approve the agent
-      const result = await agentWallet.exchangeClient!.approveAgent({
-        agentAddress: agentWallet.address as `0x${string}`,
-        agentName
-      });
-
-      console.log('✅ Agent approval response:', result);
-      
-      if (result && typeof result === 'object' && 'status' in result && result.status === 'ok') {
-        agentWallet.isApproved = true;
-        console.log('✅ Agent approved successfully!');
-        return { success: true };
-      } else {
-        const errorMessage = result && typeof result === 'object' 
-          ? (result as any).message || 'Agent approval failed'
-          : 'Agent approval failed';
-        throw new Error(errorMessage);
-      }
-    } catch (error: any) {
-      console.error('❌ Error approving agent:', error)
-      
-      // Check for specific deposit requirement error
-      if (error.message?.includes('Must deposit before performing actions')) {
-        return { 
-          success: false, 
-          needsDeposit: true,
-          error: 'You need to deposit funds to Hyperliquid before approving an agent wallet.'
-        }
-      }
-      
-      return { 
-        success: false, 
-        error: error.message || 'Failed to approve agent'
       }
     }
-  }
 
+    // ✅ Use the SDK's signing function with the exact types
+    const signature = await signUserSignedAction({
+      wallet: walletAdapter,
+      action,
+      types: {
+        'HyperliquidTransaction:ApproveAgent': [
+          { name: 'hyperliquidChain', type: 'string' },
+          { name: 'agentAddress', type: 'address' },
+          { name: 'agentName', type: 'string' },
+          { name: 'nonce', type: 'uint64' }
+        ]
+      },
+      chainId: parseInt(action.signatureChainId, 16)
+    })
+
+    console.log('✅ Master account signed approval with SDK')
+
+    // ✅ Clean up empty agentName like the SDK does
+    if (action.agentName === "") {
+      delete (action as any).agentName
+    }
+
+    // ✅ Send request with exact SDK format
+    const requestBody = {
+      action,
+      signature,
+      nonce: action.nonce
+    }
+
+    console.log('📤 Sending approval request to:', `${this.baseUrl}/exchange`)
+
+    const response = await fetch(`${this.baseUrl}/exchange`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    })
+
+    const responseText = await response.text()
+    console.log('📥 Raw response:', response.status, responseText)
+
+    if (!response.ok) {
+      console.error('❌ Approval request failed:', response.status, responseText)
+      throw new Error(`HTTP ${response.status}: ${responseText}`)
+    }
+
+    let result: any
+    try {
+      result = JSON.parse(responseText)
+    } catch (e) {
+      console.error('Failed to parse response as JSON:', responseText)
+      throw new Error('Invalid JSON response from exchange')
+    }
+
+    console.log('✅ Agent approval response:', result)
+    
+    if (result.status === 'ok') {
+      agentWallet.isApproved = true
+      console.log('✅ Agent approved successfully!')
+      return { success: true }
+    } else {
+      const errorMessage = result.error?.message || result.message || JSON.stringify(result)
+      console.error('❌ Agent approval failed:', errorMessage)
+      throw new Error(errorMessage)
+    }
+  } catch (error: any) {
+    console.error('❌ Error approving agent:', error)
+    
+    // Check for specific deposit requirement error
+    if (error.message?.includes('Must deposit before performing actions') || 
+        error.message?.includes('insufficient funds') ||
+        error.message?.includes('account does not exist')) {
+      return { 
+        success: false, 
+        needsDeposit: true,
+        error: 'You need to deposit funds to Hyperliquid before approving an agent wallet.'
+      }
+    }
+    
+    return { 
+      success: false, 
+      error: error.message || 'Failed to approve agent'
+    }
+  }
+}
   /**
    * Get the exchange client for the agent wallet
    * This can be used to make trades on behalf of the user after approval
@@ -383,9 +430,6 @@ export class HyperliquidAgentService {
     }
   }
 
-  /**
-   * Load agent from localStorage (optional)
-   */
   loadAgent(masterAddress: string): AgentWallet | null {
     const storageKey = `hyperliquid_agent_${masterAddress.toLowerCase()}_${this.useTestnet ? 'testnet' : 'mainnet'}`
     
@@ -399,7 +443,12 @@ export class HyperliquidAgentService {
           this.agentWallet = {
             address: agentData.address,
             privateKey: agentData.privateKey,
-            isApproved: agentData.isApproved || false
+            isApproved: agentData.isApproved || false,
+            // ✅ Initialize exchangeClient when loading from localStorage
+            exchangeClient: new hl.ExchangeClient({
+              wallet: new ethers.Wallet(agentData.privateKey),
+              transport: this.transport
+            })
           }
           
           console.log('✅ Agent loaded from localStorage:', this.agentWallet.address)

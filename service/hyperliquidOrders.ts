@@ -476,281 +476,287 @@ export class HyperliquidOrderService {
     }
   }
 
+/**
+ * Place a prediction order using agent wallet system - MARKET ORDER VERSION
+ */
+async placePredictionOrder(
+  request: OrderRequest,
+  signTypedDataAsync: SignTypedDataFunction,
+  userAddress: string
+): Promise<OrderResponse> {
+  console.log('🔍 Starting placePredictionOrder with:', {
+    asset: request.asset,
+    direction: request.direction,
+    price: request.price,
+    size: request.size,
+    timeWindow: request.timeWindow,
+    userAddress: userAddress ? `${userAddress.substring(0, 6)}...${userAddress.substring(38)}` : 'none',
+    hasSignFunction: !!signTypedDataAsync
+  })
 
-  /**
-   * Place a prediction order using agent wallet system
-   */
-  async placePredictionOrder(
-    request: OrderRequest,
-    signTypedDataAsync: SignTypedDataFunction,
-    userAddress: string
-  ): Promise<OrderResponse> {
-    console.log('🔍 Starting placePredictionOrder with:', {
+  try {
+    if (!userAddress) {
+      const errorMsg = 'Wallet not connected: userAddress is required'
+      console.error('❌', errorMsg)
+      return {
+        success: false,
+        error: errorMsg
+      }
+    }
+
+    if (!signTypedDataAsync) {
+      const errorMsg = 'Sign function not available. Please connect your wallet.'
+      console.error('❌', errorMsg)
+      return {
+        success: false,
+        error: errorMsg
+      }
+    }
+
+    console.log('🔍 Checking if user account exists on Hyperliquid...')
+    const accountCheck = await this.checkUserAccount(userAddress)
+    
+    if (!accountCheck.exists) {
+      console.log('❌ User account does not exist on Hyperliquid')
+      return {
+        success: false,
+        error: 'ACCOUNT_NOT_FOUND: Please deposit funds to Hyperliquid testnet first to create your account. Visit https://app.hyperliquid.xyz/?testnet=true'
+      }
+    }
+    
+    console.log('✅ User account exists, proceeding with order...')
+
+    // Ensure address is lowercase (important for Hyperliquid)
+    const address = userAddress.toLowerCase()
+
+    // Initialize agent wallet (or use existing one)
+    let agent: AgentWallet
+    try {
+      console.log('🔍 Initializing agent for user:', address)
+      agent = await this.initializeAgent(address, signTypedDataAsync)
+      console.log('✅ Agent initialized:', agent.address, 'Approved:', agent.isApproved)
+    } catch (error) {
+      console.error('❌ Agent initialization failed:', error)
+      
+      // Check if the error is due to deposit requirement
+      if (error instanceof Error && error.message === 'NEEDS_DEPOSIT') {
+        return {
+          success: false,
+          error: 'NEEDS_HYPERLIQUID_DEPOSIT'
+        }
+      }
+      
+      return {
+        success: false,
+        error: `Agent setup failed: ${error}`
+      }
+    }
+
+    // Get asset configuration
+    const assetConfig = await this.getAssetConfig(request.asset)
+    
+    // Calculate order parameters
+    const orderSize = this.calculateOrderSize(parseFloat(request.size), assetConfig.szDecimals)
+    const limitPrice = this.formatPrice(request.price, assetConfig.szDecimals)
+    const cloid = this.generateCloid()
+    
+    console.log('📊 Order parameters:', {
       asset: request.asset,
+      assetId: assetConfig.assetId,
       direction: request.direction,
       price: request.price,
+      formattedPrice: limitPrice,
       size: request.size,
+      formattedSize: orderSize,
       timeWindow: request.timeWindow,
-      userAddress: userAddress ? `${userAddress.substring(0, 6)}...${userAddress.substring(38)}` : 'none',
-      hasSignFunction: !!signTypedDataAsync
+      cloid
     })
 
     try {
-      if (!userAddress) {
-        const errorMsg = 'Wallet not connected: userAddress is required'
-        console.error('❌', errorMsg)
-        return {
-          success: false,
-          error: errorMsg
-        }
-      }
-
-      if (!signTypedDataAsync) {
-        const errorMsg = 'Sign function not available. Please connect your wallet.'
-        console.error('❌', errorMsg)
-        return {
-          success: false,
-          error: errorMsg
-        }
-      }
-
-      console.log('🔍 Checking if user account exists on Hyperliquid...')
-  const accountCheck = await this.checkUserAccount(userAddress)
-  
-  if (!accountCheck.exists) {
-    console.log('❌ User account does not exist on Hyperliquid')
-    return {
-      success: false,
-      error: 'ACCOUNT_NOT_FOUND: Please deposit funds to Hyperliquid testnet first to create your account. Visit https://app.hyperliquid.xyz/?testnet=true'
-    }
-  }
-  
-  console.log('✅ User account exists, proceeding with order...')
-
-
-      // Ensure address is lowercase (important for Hyperliquid)
-      const address = userAddress.toLowerCase()
-
-      // Initialize agent wallet (or use existing one)
-      let agent: AgentWallet
-      try {
-        console.log('🔍 Initializing agent for user:', address)
-        agent = await this.initializeAgent(address, signTypedDataAsync)
-        console.log('✅ Agent initialized:', agent.address, 'Approved:', agent.isApproved)
-      } catch (error) {
-        console.error('❌ Agent initialization failed:', error)
-        
-        // Check if the error is due to deposit requirement
-        if (error instanceof Error && error.message === 'NEEDS_DEPOSIT') {
-          return {
-            success: false,
-            error: 'NEEDS_HYPERLIQUID_DEPOSIT'
+      // ✅ Create MARKET order using trigger mechanism
+      const order = {
+        a: assetConfig.assetId, // asset index (number)
+        b: request.direction === 'up', // isBuy (boolean)
+        p: limitPrice, // price as string (still needed as reference)
+        s: orderSize, // size as string (in base units)
+        r: false, // reduceOnly (always false for opening positions)
+        // ✅ CHANGED: Use trigger type for market order
+        t: { 
+          trigger: {
+            isMarket: true, // ✅ This makes it a market order
+            triggerPx: limitPrice, // ✅ Trigger price (current market price)
+            tpsl: request.direction === 'up' ? 'tp' : 'sl' // ✅ Take profit for up, stop loss for down
           }
-        }
-        
-        return {
-          success: false,
-          error: `Agent setup failed: ${error}`
-        }
-      }
+        },
+        c: cloid, // client order ID (string)
+      };
 
-      // Get asset configuration
-      const assetConfig = await this.getAssetConfig(request.asset)
+      // Create the action object
+      const action = {
+        type: 'order',
+        orders: [order],
+        grouping: 'na' as const
+      };
+
+      // Use current timestamp in milliseconds as nonce
+      const nonce = Date.now();
+      console.log(`⏱️ Using timestamp as nonce: ${nonce}`);
+      console.log('📊 Market order created:', JSON.stringify(order, null, 2));
+
+      // Import the signing function from the SDK
+      const { signL1Action } = await import('@nktkas/hyperliquid/signing');
+      const { privateKeyToAccount } = await import('viem/accounts');
       
-      // Calculate order parameters
-      const orderSize = this.calculateOrderSize(parseFloat(request.size), assetConfig.szDecimals)
-      const limitPrice = this.formatPrice(request.price, assetConfig.szDecimals)
-      const cloid = this.generateCloid()
+      // Get the agent wallet
+      const agentWallet = await this.initializeAgent(address, signTypedDataAsync);
+      console.log('🔍 Signing market order with agent...');
       
-      console.log('📊 Order parameters:', {
-        asset: request.asset,
-        assetId: assetConfig.assetId,
-        direction: request.direction,
-        price: request.price,
-        formattedPrice: limitPrice,
-        size: request.size,
-        formattedSize: orderSize,
-        timeWindow: request.timeWindow,
-        cloid
+      // Convert private key to account
+      const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`);
+      
+      // Sign the action using the SDK's signL1Action
+      const signature = await signL1Action({
+        wallet: account,
+        action,
+        nonce,
+        isTestnet: this.useTestnet
+      });
+      
+      console.log('✅ Market order signed with agent');
+
+      // Prepare the final request object matching the reference format
+      const exchangeRequest = { action, signature, nonce };
+
+      // Log the complete request for debugging (without full signature for security)
+      const signatureString = typeof signature === 'string' 
+        ? signature 
+        : JSON.stringify(signature);
+        
+      console.log('📤 Sending market order request:', JSON.stringify({
+        action,
+        nonce,
+        signature: signatureString.slice(0, 20) + '...' // Show first 20 chars of signature
+      }, null, 2));
+
+      // Send order to Hyperliquid exchange endpoint with proper error handling
+      const response = await fetch(`${this.getApiUrl()}/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(exchangeRequest),
+        credentials: 'same-origin' as RequestCredentials
       })
 
-      try {
-        // Create the order object in the format expected by Hyperliquid API
-        const order = {
-          a: assetConfig.assetId, // asset index (number)
-          b: request.direction === 'up', // isBuy (boolean)
-          p: limitPrice, // price as string (formatted with correct decimals)
-          s: orderSize, // size as string (in base units)
-          r: false, // reduceOnly (always false for opening positions)
-          t: { limit: { tif: 'Ioc' } }, // order type (IOC = Immediate or Cancel)
-          c: cloid, // client order ID (string)
-        };
-
-        // Create the action object
-        const action = {
-          type: 'order',
-          orders: [order],
-          grouping: 'na' as const
-        };
-
-        // Use current timestamp in milliseconds as nonce
-        const nonce = Date.now();
-        console.log(`⏱️ Using timestamp as nonce: ${nonce}`);
-
-        // Import the signing function from the SDK
-        const { signL1Action } = await import('@nktkas/hyperliquid/signing');
-        const { privateKeyToAccount } = await import('viem/accounts');
-        
-        // Get the agent wallet
-        const agentWallet = await this.initializeAgent(address, signTypedDataAsync);
-        console.log('🔍 Signing order with agent...');
-        
-        // Convert private key to account
-        const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`);
-        
-        // Sign the action using the SDK's signL1Action
-        const signature = await signL1Action({
-          wallet: account,
-          action,
-          nonce,
-          isTestnet: this.useTestnet
-        });
-        
-        console.log('✅ Order signed with agent');
-
-        // Prepare the final request object matching the reference format
-        const exchangeRequest = { action, signature, nonce };
-
-        // Log the complete request for debugging (without full signature for security)
-        const signatureString = typeof signature === 'string' 
-          ? signature 
-          : JSON.stringify(signature);
-          
-        console.log('📤 Sending order request:', JSON.stringify({
-          action,
-          nonce,
-          signature: signatureString.slice(0, 20) + '...' // Show first 20 chars of signature
-        }, null, 2));
-
-        // Send order to Hyperliquid exchange endpoint with proper error handling
-        const response = await fetch(`${this.getApiUrl()}/exchange`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(exchangeRequest),
-          credentials: 'same-origin' as RequestCredentials
+      const responseText = await response.text()
+      
+      if (!response.ok) {
+        console.error('❌ Market order request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          response: responseText
         })
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
 
-        const responseText = await response.text()
+      let result: any
+      try {
+        result = JSON.parse(responseText)
+      } catch (e) {
+        console.error('Failed to parse response:', responseText)
+        throw new Error('Invalid JSON response from exchange')
+      }
+
+      console.log('📥 Received market order response:', JSON.stringify(result, null, 2))
+
+      if (result.status !== 'ok') {
+        const errorMsg = result.error?.message || JSON.stringify(result)
+        console.error('Market order failed with response:', errorMsg)
+        throw new Error(`Market order failed: ${errorMsg}`)
+      }
+
+      // Process order response based on API documentation
+      const orderStatus = result.response?.data?.statuses?.[0]
+      
+      if (!orderStatus) {
+        console.error('No order status in response:', result)
+        throw new Error('No order status in response')
+      }
+      
+      if (orderStatus.filled) {
+        // Market order filled immediately (expected behavior)
+        console.log('✅ Market order filled immediately:', orderStatus)
         
-        if (!response.ok) {
-          console.error('❌ Order request failed:', {
-            status: response.status,
-            statusText: response.statusText,
-            response: responseText
-          })
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        let result: any
-        try {
-          result = JSON.parse(responseText)
-        } catch (e) {
-          console.error('Failed to parse response:', responseText)
-          throw new Error('Invalid JSON response from exchange')
-        }
-
-        console.log('📥 Received response:', JSON.stringify(result, null, 2))
-
-        if (result.status !== 'ok') {
-          const errorMsg = result.error?.message || JSON.stringify(result)
-          console.error('Order failed with response:', errorMsg)
-          throw new Error(`Order failed: ${errorMsg}`)
-        }
-
-        // Process order response based on API documentation
-        const orderStatus = result.response?.data?.statuses?.[0]
-        
-        if (!orderStatus) {
-          console.error('No order status in response:', result)
-          throw new Error('No order status in response')
+        // Store the position
+        const position: PositionInfo = {
+          orderId: orderStatus.oid,
+          cloid: cloid,
+          asset: request.asset,
+          direction: request.direction,
+          entryPrice: parseFloat(orderStatus.avgPx || '0'),
+          size: orderStatus.sz,
+          timestamp: Date.now(),
+          timeWindow: request.timeWindow,
+          filled: true,
+          fillPrice: parseFloat(orderStatus.avgPx || '0')
         }
         
-        if (orderStatus.filled) {
-          // Order filled immediately
-          console.log('✅ Order filled immediately:', orderStatus)
-          
-          // Store the position
-          const position: PositionInfo = {
-            orderId: orderStatus.oid,
-            cloid: cloid,
-            asset: request.asset,
-            direction: request.direction,
-            entryPrice: parseFloat(orderStatus.avgPx || '0'),
-            size: orderStatus.sz,
-            timestamp: Date.now(),
-            timeWindow: request.timeWindow,
+        this.activePositions.set(cloid, position)
+        
+        // Schedule auto-close if timeWindow is set
+        if (request.timeWindow > 0) {
+          this.scheduleAutoClose(cloid, request.timeWindow)
+        }
+        
+        return {
+          success: true,
+          orderId: orderStatus.oid,
+          cloid: cloid,
+          fillInfo: {
             filled: true,
-            fillPrice: parseFloat(orderStatus.avgPx || '0')
-          }
-          
-          this.activePositions.set(cloid, position)
-          
-          // Schedule auto-close if timeWindow is set
-          if (request.timeWindow > 0) {
-            this.scheduleAutoClose(cloid, request.timeWindow)
-          }
-          
-          return {
-            success: true,
-            orderId: orderStatus.oid,
-            cloid: cloid,
-            fillInfo: {
-              filled: true,
-              fillPrice: parseFloat(orderStatus.avgPx || '0'),
-              fillSize: orderStatus.sz
-            }
-          }
-        } else if (orderStatus.status === 'resting') {
-          // Order is resting in the book
-          console.log('⏳ Order resting in book:', orderStatus)
-          
-          return {
-            success: true,
-            orderId: orderStatus.oid,
-            cloid: cloid,
-            fillInfo: {
-              filled: false
-            }
-          }
-        } else {
-          // Order rejected or failed
-          console.error('Order not filled:', orderStatus)
-          return {
-            success: false,
-            error: `Order not filled: ${orderStatus.status}`,
-            orderId: orderStatus?.oid,
-            cloid: cloid
+            fillPrice: parseFloat(orderStatus.avgPx || '0'),
+            fillSize: orderStatus.sz
           }
         }
-      } catch (error) {
-        console.error('Error in placePredictionOrder:', error)
+      } else if (orderStatus.resting) {
+        // Market order shouldn't typically rest, but handle it
+        console.log('⚠️ Market order resting (unusual):', orderStatus)
+        
+        return {
+          success: true,
+          orderId: orderStatus.resting.oid,
+          cloid: cloid,
+          fillInfo: {
+            filled: false
+          }
+        }
+      } else {
+        // Order rejected or failed
+        console.error('Market order not filled:', orderStatus)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: `Market order not filled: ${JSON.stringify(orderStatus)}`,
+          orderId: orderStatus?.oid,
           cloid: cloid
         }
       }
-    } catch (error: any) {
-      console.error('Order placement failed:', error)
+    } catch (error) {
+      console.error('Error in placePredictionOrder:', error)
       return {
         success: false,
-        error: error.message || 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error',
+        cloid: cloid
       }
     }
+  } catch (error: any) {
+    console.error('Market order placement failed:', error)
+    return {
+      success: false,
+      error: error.message || 'Unknown error occurred'
+    }
   }
+}
 
   /**
    * Cancel an order using agent wallet system
