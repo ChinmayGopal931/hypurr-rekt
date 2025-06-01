@@ -173,17 +173,36 @@ export function useHyperliquid(): UseHyperliquidReturn {
         request.price = currentPrice
       }
 
+      if (!address) {
+        console.error('No wallet address available')
+        return {
+          success: false,
+          error: 'No wallet address available. Please connect your wallet.'
+        }
+      }
+
       console.log("Placing prediction order:", {
-        request,
-        address
+        asset: request.asset,
+        direction: request.direction,
+        price: request.price,
+        size: request.size,
+        timeWindow: request.timeWindow,
+        walletAddress: address ? `${address.substring(0, 6)}...${address.substring(38)}` : 'none'
       })
 
-      // Use agent system for order placement
-      return await hyperliquidOrders.placePredictionOrder(
-        request,
-        signTypedDataAsync,
-        address
-      )
+      try {
+        // Use agent system for order placement
+        const result = await hyperliquidOrders.placePredictionOrder(
+          request,
+          signTypedDataAsync,
+          address
+        )
+        console.log('Order placement result:', result)
+        return result
+      } catch (error) {
+        console.error('Error in placePredictionOrder:', error)
+        throw error
+      }
     } catch (error: any) {
       console.error('Order placement failed:', error)
       return {

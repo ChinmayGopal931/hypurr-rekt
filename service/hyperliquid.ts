@@ -177,10 +177,10 @@ export interface HyperliquidAsset {
      * Format price according to asset's szDecimals
      */
     formatPrice(price: number, szDecimals: number): string {
-      // Price precision: up to 5 significant figures
-      // Max decimal places: MAX_DECIMALS - szDecimals (6 for perp, 8 for spot)
-      const maxDecimals = Math.max(0, 6 - szDecimals) // Assuming perpetuals for now
-      return price.toFixed(Math.min(maxDecimals, 5))
+      // Price precision: up to 5 significant figures, no more than 6 decimal places
+      const maxDecimals = Math.min(6, Math.max(0, 6 - szDecimals))
+      const formatted = price.toExponential(maxDecimals).replace(/e\+?(-?\d+)/, `e${+RegExp.$1 - maxDecimals}`)
+      return formatted.replace(/\.?0+$/, '')
     }
   
     /**

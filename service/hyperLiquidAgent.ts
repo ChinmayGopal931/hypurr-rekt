@@ -1,31 +1,37 @@
 // src/services/hyperliquidAgent.ts
 import { ethers } from 'ethers'
-import { encode as msgpackEncode } from '@msgpack/msgpack'
+import * as hl from '@nktkas/hyperliquid'
+import { HyperliquidSignature } from './hyperliquidOrders'
+
+type ExchangeClient = hl.ExchangeClient
 
 export interface AgentWallet {
   address: string
   privateKey: string
   isApproved: boolean
-}
-
-export interface AgentApprovalRequest {
-  agentAddress: string
-  agentName?: string // Optional name for the agent
+  exchangeClient?: ExchangeClient
 }
 
 export class HyperliquidAgentService {
-  private static readonly TESTNET_API = 'https://api.hyperliquid-testnet.xyz'
-  private static readonly MAINNET_API = 'https://api.hyperliquid.xyz'
-  
-  private useTestnet: boolean = true
+  private useTestnet: boolean
   private agentWallet: AgentWallet | null = null
+  private transport: hl.HttpTransport
+  private infoClient: hl.InfoClient
+  private baseUrl: string
 
   constructor(useTestnet: boolean = true) {
     this.useTestnet = useTestnet
-  }
-
-  private getApiUrl(): string {
-    return this.useTestnet ? HyperliquidAgentService.TESTNET_API : HyperliquidAgentService.MAINNET_API
+    this.baseUrl = useTestnet 
+      ? 'https://api.hyperliquid-testnet.xyz' 
+      : 'https://api.hyperliquid.xyz'
+    
+    // Create transport with the correct base URL
+    this.transport = new hl.HttpTransport()
+    
+    // Initialize info client with the transport
+    this.infoClient = new hl.InfoClient({
+      transport: this.transport
+    })
   }
 
   /**
@@ -37,7 +43,11 @@ export class HyperliquidAgentService {
     const agentWallet: AgentWallet = {
       address: wallet.address.toLowerCase(),
       privateKey: wallet.privateKey,
-      isApproved: false
+      isApproved: false,
+      exchangeClient: new hl.ExchangeClient({
+        wallet: new ethers.Wallet(wallet.privateKey),
+        transport: this.transport
+      })
     }
 
     this.agentWallet = agentWallet
@@ -50,149 +60,91 @@ export class HyperliquidAgentService {
    */
   getAgentWallet(): AgentWallet {
     if (!this.agentWallet) {
+      console.log('❌ Agent wallet not found, generating new one...')
       return this.generateAgentWallet()
     }
+    
+    // Ensure exchange client is initialized
+    if (!this.agentWallet.exchangeClient) {
+      this.agentWallet.exchangeClient = new hl.ExchangeClient({
+        wallet: new ethers.Wallet(this.agentWallet.privateKey),
+        transport: this.transport
+      })
+    }
+    
+    console.log('✅ Agent wallet found:', this.agentWallet.address)
     return this.agentWallet
   }
 
-
-
-/**
+  /**
    * Sign user-signed action (FINAL FIX - matches Python SDK source exactly)
-   * Key differences from previous attempts:
-   * 1. Primary type includes namespace: "HyperliquidTransaction:ApproveAgent"
-   * 2. Types DO NOT include signatureChainId
-   * 3. Message to sign does NOT include signatureChainId
-   * 4. SignatureChainId is used only for domain.chainId and API request
    */
-private async signUserSignedAction(
-  action: any,
-  masterSignTypedData: any
-): Promise<{ r: string; s: string; v: number }> {
-  // Domain uses the signatureChainId (testnet chainId)
-  const domain = {
-    name: 'HyperliquidSignTransaction',
-    version: '1',
-    chainId: this.useTestnet ? 421614 : 42161, // This comes from signatureChainId
-    verifyingContract: '0x0000000000000000000000000000000000000000'
-  }
+  async approveAgent(
+    agentWallet: AgentWallet,
+    masterSigner: any, // Should be a signer that can sign EIP-712 messages
+    agentName: string = 'Hyper-rektAgent'
+  ): Promise<{ success: boolean; error?: string; needsDeposit?: boolean }> {
+    try {
+      if (!agentWallet.exchangeClient) {
+        throw new Error('Agent wallet not properly initialized')
+      }
 
-  // EIP-712 types EXACTLY from Python SDK - NO signatureChainId in types!
-  const types = {
-    'HyperliquidTransaction:ApproveAgent': [ // WITH namespace prefix
-      { name: 'hyperliquidChain', type: 'string' },
-      { name: 'agentAddress', type: 'address' },
-      { name: 'agentName', type: 'string' },
-      { name: 'nonce', type: 'uint64' }
-      // NOTE: signatureChainId is NOT in the types!
-    ]
-  }
+      console.log('🔐 Approving agent:', {
+        agentAddress: agentWallet.address,
+        agentName,
+        network: this.useTestnet ? 'testnet' : 'mainnet'
+      })
 
-  console.log('🔍 PYTHON SDK Signing domain:', domain)
-  console.log('🔍 PYTHON SDK Signing message:', action)
+      // First, ensure the agent wallet is registered with Hyperliquid
+      const registerResponse = await fetch(`${this.baseUrl}/register_agent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentAddress: agentWallet.address,
+          agentName,
+          nonce: Date.now()
+        })
+      });
 
-  try {
-    const signature = await masterSignTypedData({
-      domain,
-      types,
-      primaryType: 'HyperliquidTransaction:ApproveAgent', // WITH namespace prefix
-      message: action
-    })
+      if (!registerResponse.ok) {
+        const error = await registerResponse.json().catch(() => ({}));
+        console.error('❌ Failed to register agent wallet:', error);
+        
+        // If the wallet doesn't exist, we need to create it with a deposit
+        if (registerResponse.status === 400 && error.message?.includes('does not exist')) {
+          return { 
+            success: false, 
+            needsDeposit: true,
+            error: 'You need to deposit funds to Hyperliquid first to create your account.'
+          };
+        }
+        
+        throw new Error(error.message || 'Failed to register agent wallet');
+      }
 
-    console.log('🔍 PYTHON SDK Raw signature:', signature)
+      // Now approve the agent
+      const result = await agentWallet.exchangeClient!.approveAgent({
+        agentAddress: agentWallet.address as `0x${string}`,
+        agentName
+      });
 
-    const sig = ethers.Signature.from(signature)
-    
-    // Verify the signature recovery
-    const recoveredAddress = ethers.verifyTypedData(domain, types, action, signature)
-    console.log('🔍 PYTHON SDK Recovered address:', recoveredAddress)
-    
-    return {
-      r: sig.r,
-      s: sig.s,
-      v: sig.v
-    }
-  } catch (error) {
-    console.error('❌ PYTHON SDK Signing failed:', error)
-    throw new Error(`Failed to sign agent approval: ${error}`)
-  }
-}
-
-/**
- * Approve agent wallet (FINAL FIX - matches Python SDK exactly)
- */
-async approveAgent(
-  agentWallet: AgentWallet,
-  masterSignTypedData: any,
-  agentName: string = 'GameAgent'
-): Promise<{ success: boolean; error?: string; needsDeposit?: boolean }> {
-  try {
-    const nonce = Date.now()
-    
-    // Create the message to sign (PYTHON SDK format - NO signatureChainId)
-    const messageToSign = {
-      hyperliquidChain: this.useTestnet ? 'Testnet' : 'Mainnet',
-      agentAddress: agentWallet.address,
-      agentName: agentName,
-      nonce: nonce
-      // NOTE: signatureChainId is NOT included in the message!
-    }
-
-    console.log('🔧 PYTHON SDK Signing message (exact format):', messageToSign)
-
-    // Sign the message
-    const signature = await this.signUserSignedAction(messageToSign, masterSignTypedData)
-
-    // Create the action for the API request (includes signatureChainId for API)
-    const action = {
-      type: 'approveAgent',
-      hyperliquidChain: this.useTestnet ? 'Testnet' : 'Mainnet',
-      signatureChainId: this.useTestnet ? '0x66eee' : '0xa4b1', // Added for API request
-      agentAddress: agentWallet.address,
-      agentName: agentName,
-      nonce: nonce
-    }
-
-    // Create the request structure matching Python SDK
-    const approvalRequest = {
-      action: action,
-      nonce: nonce,
-      signature: signature
-    }
-
-    console.log('🚀 PYTHON SDK Sending agent approval request:', {
-      agentAddress: agentWallet.address,
-      agentName: agentName,
-      network: this.useTestnet ? 'testnet' : 'mainnet',
-      requestStructure: 'Exact Python SDK format'
-    })
-
-    const response = await fetch(`${this.getApiUrl()}/exchange`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(approvalRequest)
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('❌ Agent approval HTTP error:', errorText)
-      throw new Error(`HTTP ${response.status}: ${errorText}`)
-    }
-
-    const result = await response.json()
-    console.log('📥 PYTHON SDK Agent approval response:', result)
-
-    if (result.status === 'ok') {
-      agentWallet.isApproved = true
-      console.log('✅ PYTHON SDK Agent approved successfully!')
-      return { success: true }
-    } else {
-      console.error('❌ PYTHON SDK Agent approval failed:', result)
+      console.log('✅ Agent approval response:', result);
+      
+      if (result && typeof result === 'object' && 'status' in result && result.status === 'ok') {
+        agentWallet.isApproved = true;
+        console.log('✅ Agent approved successfully!');
+        return { success: true };
+      } else {
+        const errorMessage = result && typeof result === 'object' 
+          ? (result as any).message || 'Agent approval failed'
+          : 'Agent approval failed';
+        throw new Error(errorMessage);
+      }
+    } catch (error: any) {
+      console.error('❌ Error approving agent:', error)
       
       // Check for specific deposit requirement error
-      if (result.response && result.response.includes('Must deposit before performing actions')) {
+      if (error.message?.includes('Must deposit before performing actions')) {
         return { 
           success: false, 
           needsDeposit: true,
@@ -202,140 +154,189 @@ async approveAgent(
       
       return { 
         success: false, 
-        error: result.response || 'Agent approval failed'
+        error: error.message || 'Failed to approve agent'
       }
     }
-  } catch (error) {
-    console.error('❌ PYTHON SDK Error approving agent:', error)
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
-    }
-  }
-}
-
-/**
- * Fixed action hash method using msgpack (matches Python SDK exactly)
- */
-private actionHash(action: any, nonce: number, vaultAddress: string | null): string {
-  try {
-    console.log('🔍 Generating action hash for:', { action, nonce, vaultAddress })
-    
-    // Use msgpack to serialize action (exactly like Python SDK)
-    const actionBytes = msgpackEncode(action)
-    console.log('🔍 Action serialized with msgpack:', actionBytes)
-    
-    // Nonce as 8 bytes big endian (matching Python SDK)
-    const nonceBytes = new ArrayBuffer(8)
-    const nonceView = new DataView(nonceBytes)
-    nonceView.setBigUint64(0, BigInt(nonce), false) // big endian
-    
-    let hashInput: Uint8Array
-    
-    if (vaultAddress === null) {
-      // No vault address case
-      hashInput = new Uint8Array(actionBytes.length + 8 + 1)
-      hashInput.set(actionBytes, 0)
-      hashInput.set(new Uint8Array(nonceBytes), actionBytes.length)
-      hashInput[actionBytes.length + 8] = 0x00
-    } else {
-      // With vault address (trading on behalf of master account)
-      const vaultBytes = this.addressToBytes(vaultAddress.toLowerCase())
-      hashInput = new Uint8Array(actionBytes.length + 8 + 1 + vaultBytes.length)
-      hashInput.set(actionBytes, 0)
-      hashInput.set(new Uint8Array(nonceBytes), actionBytes.length)
-      hashInput[actionBytes.length + 8] = 0x01
-      hashInput.set(vaultBytes, actionBytes.length + 8 + 1)
-    }
-    
-    // Hash using keccak256
-    const hash = ethers.keccak256(hashInput)
-    console.log('🔍 Final action hash:', hash)
-    
-    return hash
-  } catch (error) {
-    console.error('❌ Action hash generation failed:', error)
-    throw error
-  }
-}
-
-/**
- * Convert address to bytes (matches Python SDK)
- */
-private addressToBytes(address: string): Uint8Array {
-  // Remove 0x prefix if present
-  const hex = address.startsWith('0x') ? address.slice(2) : address
-  return ethers.getBytes('0x' + hex)
-}
-
-  /**
-   * Construct phantom agent (from Python SDK)
-   */
-  private constructPhantomAgent(hash: string, isMainnet: boolean): any {
-    return {
-      source: isMainnet ? 'a' : 'b',
-      connectionId: hash
-    }
   }
 
   /**
-   * Sign L1 action using agent wallet (with chainId 1337)
+   * Get the exchange client for the agent wallet
+   * This can be used to make trades on behalf of the user after approval
    */
-  async signL1ActionWithAgent(
-    action: any,
-    nonce: number,
-    vaultAddress: string | null = null
-  ): Promise<{ r: string; s: string; v: number }> {
-    if (!this.agentWallet || !this.agentWallet.isApproved) {
-      throw new Error('Agent wallet not approved. Please approve the agent first.')
+  getAgentExchangeClient(): ExchangeClient | null {
+    if (!this.agentWallet?.exchangeClient) {
+      console.error('Agent wallet not initialized')
+      return null
+    }
+    return this.agentWallet.exchangeClient
+  }
+
+  /**
+   * Place an order using the agent wallet
+   */
+  async placeOrder(
+    orderParams: {
+      asset: string;  // Asset symbol like 'BTC', 'ETH', etc.
+      isBuy: boolean;
+      price: string;
+      size: string;
+      reduceOnly?: boolean;
+      isMarket: boolean;
+      triggerPx: string;
+      tpsl: "tp" | "sl";
+    }
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (!this.agentWallet?.exchangeClient) {
+      return {
+        success: false,
+        error: 'Agent wallet not initialized'
+      }
     }
 
     try {
-      // Create action hash
-      const hash = this.actionHash(action, nonce, vaultAddress)
-      console.log('Action hash generated:', hash)
-
-      // Construct phantom agent
-      const phantomAgent = this.constructPhantomAgent(hash, !this.useTestnet)
-      console.log('Phantom agent:', phantomAgent)
-
-      // Create agent signer from private key
-      const agentSigner = new ethers.Wallet(this.agentWallet.privateKey)
-      console.log('Agent signer address:', agentSigner.address)
-
-      // EIP-712 domain for agent signing (chainId 1337)
-      const domain = {
-        name: 'Exchange',
-        version: '1',
-        chainId: 1337, // This is the key - agents can sign with 1337
-        verifyingContract: '0x0000000000000000000000000000000000000000'
+      // Get the asset index from the symbol
+      const meta = await this.infoClient.meta()
+      console.log('Meta response:', JSON.stringify(meta, null, 2))
+      
+      if (!meta.universe || !Array.isArray(meta.universe)) {
+        console.error('Invalid meta response structure:', meta)
+        return {
+          success: false,
+          error: 'Invalid response from exchange'
+        }
+      }
+      
+      // Find the index of the asset in the universe array
+      const assetIndex = meta.universe.findIndex((a: any) => a.name === orderParams.asset)
+      
+      if (assetIndex === -1) {
+        return {
+          success: false,
+          error: `Asset ${orderParams.asset} not found`
+        }
       }
 
-      const types = {
-        Agent: [
-          { name: 'source', type: 'string' },
-          { name: 'connectionId', type: 'bytes32' }
-        ]
+      const order = {
+        a: assetIndex,  // Use the array index as the asset index
+        b: orderParams.isBuy,
+        p: orderParams.price,
+        s: orderParams.size,
+        r: orderParams.reduceOnly || false,
+        t: {
+          trigger: {
+            isMarket: orderParams.isMarket,
+            triggerPx: orderParams.triggerPx,
+            tpsl: orderParams.tpsl,
+          },
+        },
       }
 
-      console.log('Signing with domain:', domain)
-      console.log('Signing phantom agent:', phantomAgent)
+      const result = await this.agentWallet.exchangeClient.order({
+        orders: [order],
+        grouping: 'na',
+      })
 
-      // Sign with agent's private key using chainId 1337
-      const signature = await agentSigner.signTypedData(domain, types, phantomAgent)
+      return {
+        success: true,
+        data: result
+      }
+    } catch (error: any) {
+      console.error('❌ Error placing order:', error)
+      return {
+        success: false,
+        error: error.message || 'Failed to place order'
+      }
+    }
+  }
+
+  // /**
+  //  * Construct phantom agent (from Python SDK)
+  //  */
+  // private constructPhantomAgent(hash: string, isMainnet: boolean): any {
+  //   return {
+  //     source: isMainnet ? 'a' : 'b',
+  //     connectionId: hash
+  //   }
+  // }
+
+  /**
+   * Convert address to bytes
+   */
+  // private addressToBytes(address: string): Uint8Array {
+  //   // Remove 0x prefix if present
+  //   const hex = address.startsWith('0x') ? address.slice(2) : address
+  //   return ethers.getBytes('0x' + hex)
+  // }
+
+  /**
+   * Sign an L1 action in the standard format expected by Hyperliquid
+   * @param action The action to sign
+   * @param wallet The wallet or private key to sign with
+   * @param vaultAddress Optional vault/subaccount address
+   * @param nonce The nonce to use (should be current timestamp in milliseconds)
+   * @returns The signature in { r, s, v } format
+   */
+  async signStandardL1Action(
+    action: any,
+    wallet: ethers.Wallet | string,
+    vaultAddress: string | undefined,
+    nonce: number
+  ): Promise<HyperliquidSignature> {
+    try {
+      // Create a signer from the provided wallet or private key
+      const signer = typeof wallet === 'string' 
+        ? new ethers.Wallet(wallet)
+        : wallet;
+      
+      // Create the payload to sign
+      const payload = {
+        action,
+        nonce,
+        ...(vaultAddress && { vaultAddress })
+      };
+      
+      // Stringify with deterministic ordering
+      const messageString = JSON.stringify(payload, Object.keys(payload).sort())
+      
+      console.log('🔐 Signing message:', messageString)
+      
+      // Sign the message
+      const messageHash = ethers.keccak256(ethers.toUtf8Bytes(messageString))
+      const signature = await signer.signMessage(ethers.getBytes(messageHash))
+      
+      // Parse the signature into r, s, v components
       const sig = ethers.Signature.from(signature)
-
-      console.log('✅ Successfully signed L1 action with agent')
-
+      
+      console.log('✅ Standard L1 action signed successfully')
       return {
         r: sig.r,
         s: sig.s,
         v: sig.v
       }
     } catch (error) {
-      console.error('❌ Failed to sign L1 action with agent:', error)
-      throw new Error(`Failed to sign L1 action with agent: ${error}`)
+      console.error('❌ Error signing standard L1 action:', error)
+      throw error
     }
+  }
+  
+  /**
+   * @deprecated Use signStandardL1Action instead
+   */
+  async signL1ActionWithAgent(
+    payload: {
+      action: any;
+      nonce: number;
+      vaultAddress?: string;
+    }
+  ): Promise<HyperliquidSignature> {
+    console.warn('signL1ActionWithAgent is deprecated. Use signStandardL1Action instead.')
+    const agentWallet = this.getAgentWallet()
+    return this.signStandardL1Action(
+      payload.action,
+      agentWallet.privateKey, // Pass the private key as the wallet parameter
+      payload.vaultAddress,
+      payload.nonce
+    )
   }
 
   /**
@@ -448,4 +449,4 @@ private addressToBytes(address: string): Uint8Array {
 }
 
 // Global agent service instance
-export const hyperliquidAgent = new HyperliquidAgentService(true)
+export const hyperliquidAgent = new HyperliquidAgentService(true) // Default to testnet
