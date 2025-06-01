@@ -243,6 +243,41 @@ export class HyperliquidOrderService {
     }
   }
 
+  async checkUserAccount(userAddress: string): Promise<{exists: boolean, balance?: any}> {
+    try {
+      const response = await fetch(`${this.getApiUrl()}/info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'clearinghouseState',
+          user: userAddress.toLowerCase()
+        })
+      })
+  
+      if (!response.ok) {
+        console.log('❌ Account check failed:', response.status)
+        return { exists: false }
+      }
+  
+      const result = await response.json()
+      console.log('🔍 Account check result:', result)
+  
+      if (result && (result.marginSummary || result.crossMarginSummary)) {
+        console.log('✅ Account exists with balance')
+        return { exists: true, balance: result }
+      } else {
+        console.log('❌ Account does not exist or has no balance')
+        return { exists: false }
+      }
+    } catch (error) {
+      console.error('❌ Error checking account:', error)
+      return { exists: false }
+    }
+  }
+
+
   /**
    * Place a prediction order using agent wallet system
    */
@@ -255,6 +290,20 @@ export class HyperliquidOrderService {
       if (!userAddress) {
         throw new Error('Wallet not connected')
       }
+
+      console.log('🔍 Checking if user account exists on Hyperliquid...')
+  const accountCheck = await this.checkUserAccount(userAddress)
+  
+  if (!accountCheck.exists) {
+    console.log('❌ User account does not exist on Hyperliquid')
+    return {
+      success: false,
+      error: 'ACCOUNT_NOT_FOUND: Please deposit funds to Hyperliquid testnet first to create your account. Visit https://app.hyperliquid.xyz/?testnet=true'
+    }
+  }
+  
+  console.log('✅ User account exists, proceeding with order...')
+
 
       // Ensure address is lowercase (important for Hyperliquid)
       const address = userAddress.toLowerCase()

@@ -1,5 +1,6 @@
 // src/services/hyperliquidAgent.ts
 import { ethers } from 'ethers'
+import { encode as msgpackEncode } from '@msgpack/msgpack'
 
 export interface AgentWallet {
   address: string
@@ -213,31 +214,33 @@ async approveAgent(
   }
 }
 
-  /**
-   * Create action hash using simplified approach
-   */
-  private actionHash(action: any, nonce: number, vaultAddress: string | null): string {
-    // Convert action to a consistent string representation
-    const actionStr = JSON.stringify(action, Object.keys(action).sort())
+/**
+ * Fixed action hash method using msgpack (matches Python SDK exactly)
+ */
+private actionHash(action: any, nonce: number, vaultAddress: string | null): string {
+  try {
+    console.log('🔍 Generating action hash for:', { action, nonce, vaultAddress })
     
-    // Create the hash input similar to Python SDK
-    const encoder = new TextEncoder()
-    const actionBytes = encoder.encode(actionStr)
+    // Use msgpack to serialize action (exactly like Python SDK)
+    const actionBytes = msgpackEncode(action)
+    console.log('🔍 Action serialized with msgpack:', actionBytes)
+    
+    // Nonce as 8 bytes big endian (matching Python SDK)
     const nonceBytes = new ArrayBuffer(8)
     const nonceView = new DataView(nonceBytes)
     nonceView.setBigUint64(0, BigInt(nonce), false) // big endian
     
     let hashInput: Uint8Array
     
-    // Add vault address handling
     if (vaultAddress === null) {
+      // No vault address case
       hashInput = new Uint8Array(actionBytes.length + 8 + 1)
       hashInput.set(actionBytes, 0)
       hashInput.set(new Uint8Array(nonceBytes), actionBytes.length)
       hashInput[actionBytes.length + 8] = 0x00
     } else {
-      // When trading on behalf of master account (vault address)
-      const vaultBytes = ethers.getBytes(vaultAddress)
+      // With vault address (trading on behalf of master account)
+      const vaultBytes = this.addressToBytes(vaultAddress.toLowerCase())
       hashInput = new Uint8Array(actionBytes.length + 8 + 1 + vaultBytes.length)
       hashInput.set(actionBytes, 0)
       hashInput.set(new Uint8Array(nonceBytes), actionBytes.length)
@@ -245,9 +248,25 @@ async approveAgent(
       hashInput.set(vaultBytes, actionBytes.length + 8 + 1)
     }
     
-    // Hash the input
-    return ethers.keccak256(hashInput)
+    // Hash using keccak256
+    const hash = ethers.keccak256(hashInput)
+    console.log('🔍 Final action hash:', hash)
+    
+    return hash
+  } catch (error) {
+    console.error('❌ Action hash generation failed:', error)
+    throw error
   }
+}
+
+/**
+ * Convert address to bytes (matches Python SDK)
+ */
+private addressToBytes(address: string): Uint8Array {
+  // Remove 0x prefix if present
+  const hex = address.startsWith('0x') ? address.slice(2) : address
+  return ethers.getBytes('0x' + hex)
+}
 
   /**
    * Construct phantom agent (from Python SDK)
