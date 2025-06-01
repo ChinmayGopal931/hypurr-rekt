@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAccount, useSignTypedData } from 'wagmi'
 import { hyperliquid, HyperliquidAsset, PriceFeed } from '@/service/hyperliquid'
 import { hyperliquidOrders, OrderRequest, OrderResponse, PositionInfo } from '@/service/hyperliquidOrders'
+import { useSwitchChain } from 'wagmi'
+
 
 export interface Asset {
   id: string
@@ -44,9 +46,10 @@ export function useHyperliquid(): UseHyperliquidReturn {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   
   // Wagmi hooks for wallet connectivity
-  const { address, isConnected: isWalletConnected } = useAccount()
+  const { address, isConnected: isWalletConnected, chain } = useAccount()
   const { signTypedDataAsync } = useSignTypedData()
-  
+  const { switchChain : switchNetwork } = useSwitchChain()
+
   // Refs for price tracking
   const assetsMetadataRef = useRef<HyperliquidAsset[]>([])
   const previousPricesRef = useRef<{ [symbol: string]: number }>({})
@@ -132,6 +135,28 @@ export function useHyperliquid(): UseHyperliquidReturn {
       return {
         success: false,
         error: 'Unable to sign transactions'
+      }
+    }
+
+    // Check if on correct network
+    const expectedChainId = 421614 // Arbitrum Sepolia testnet
+    if (chain?.id !== expectedChainId) {
+      console.log(`Wrong network. Expected ${expectedChainId}, got ${chain?.id}`)
+      
+      if (switchNetwork) {
+        try {
+          await switchNetwork({ chainId: expectedChainId })
+        } catch (error) {
+          return {
+            success: false,
+            error: `Please switch to Arbitrum Sepolia testnet (ChainId: ${expectedChainId})`
+          }
+        }
+      } else {
+        return {
+          success: false,
+          error: `Please switch to Arbitrum Sepolia testnet (ChainId: ${expectedChainId})`
+        }
       }
     }
 

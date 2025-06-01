@@ -54,7 +54,7 @@ export function AgentStatus({ userAddress, isConnected }: AgentStatusProps) {
               ) : agentStatus.exists ? (
                 <Badge variant="outline" className="text-yellow-400 border-yellow-400">
                   <Clock className="w-3 h-3 mr-1" />
-                  Pending
+                  Needs Approval
                 </Badge>
               ) : (
                 <Badge variant="outline" className="text-slate-400 border-slate-400">
@@ -67,7 +67,7 @@ export function AgentStatus({ userAddress, isConnected }: AgentStatusProps) {
               {agentStatus.approved ? (
                 <span>Agent wallet approved for trading</span>
               ) : agentStatus.exists ? (
-                <span>Agent created, approval needed</span>
+                <span>Agent created, waiting for approval</span>
               ) : (
                 <span>Agent will be created on first trade</span>
               )}

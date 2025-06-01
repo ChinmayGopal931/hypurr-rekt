@@ -383,8 +383,11 @@ export function GameInterface({
       )}
 
       {/* Deposit Required Alert */}
-      {needsDeposit && (
-        <DepositRequiredAlert onDismiss={() => setNeedsDeposit(false)} />
+      {needsDeposit && address && (
+        <DepositRequiredAlert 
+          userAddress={address} 
+          onDismiss={() => setNeedsDeposit(false)} 
+        />
       )}
 
       {/* Active Position Alert */}

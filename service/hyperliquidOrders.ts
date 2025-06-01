@@ -85,18 +85,73 @@ export class HyperliquidOrderService {
   ): Promise<AgentWallet> {
     console.log('🔍 Checking for existing agent for user:', userAddress)
     
-    // Try to load existing agent
+    // Verify the signing function will use the correct account
+    try {
+      // Test signature to see what address it recovers
+      const testMessage = {
+        test: 'verification',
+        address: userAddress.toLowerCase(),
+        timestamp: Date.now()
+      }
+      
+      const testDomain = {
+        name: 'Test',
+        version: '1',
+        chainId: this.useTestnet ? 421614 : 42161,
+        verifyingContract: '0x0000000000000000000000000000000000000000'
+      }
+      
+      const testTypes = {
+        Test: [
+          { name: 'test', type: 'string' },
+          { name: 'address', type: 'address' },
+          { name: 'timestamp', type: 'uint256' }
+        ]
+      }
+      
+      console.log('🔍 Testing signature with expected address:', userAddress)
+      
+      const testSig = await masterSignTypedData({
+        domain: testDomain,
+        types: testTypes,
+        primaryType: 'Test',
+        message: testMessage
+      })
+      
+      const recoveredAddress = ethers.verifyTypedData(testDomain, testTypes, testMessage, testSig)
+      console.log('🔍 Test signature recovered address:', recoveredAddress)
+      console.log('🔍 Expected address:', userAddress)
+      console.log('🔍 Addresses match:', recoveredAddress.toLowerCase() === userAddress.toLowerCase())
+      
+      if (recoveredAddress.toLowerCase() !== userAddress.toLowerCase()) {
+        throw new Error(`Address mismatch! Expected ${userAddress}, got ${recoveredAddress}. Please ensure you're connected to the correct account in your wallet.`)
+      }
+      
+    } catch (error) {
+      console.error('❌ Account verification failed:', error)
+      throw new Error(`Account verification failed: ${error}`)
+    }
+  
+    // Try to load existing agent (even if not approved yet)
     let agent = hyperliquidAgent.loadAgent(userAddress)
     
-    if (!agent || !agent.isApproved) {
-      console.log('🔧 No approved agent found, creating new one...')
-      
-      // Generate new agent
+    // Only generate a new agent if none exists at all
+    if (!agent) {
+      console.log('🔧 No agent found, creating new one...')
       agent = hyperliquidAgent.generateAgentWallet()
       console.log('✅ Generated new agent wallet:', agent.address)
       
-      // Approve agent with master account
-      console.log('🔍 Requesting agent approval from user...')
+      // Save the unapproved agent immediately so we can reuse it
+      hyperliquidAgent.saveAgent(userAddress)
+      console.log('✅ Saved unapproved agent to localStorage')
+    } else {
+      console.log('✅ Found existing agent:', agent.address, 'Approved:', agent.isApproved)
+    }
+    
+    // Now try to approve the agent if it's not already approved
+    if (!agent.isApproved) {
+      console.log('🔍 Agent not approved yet, requesting approval from user...')
+      
       const approvalResult = await hyperliquidAgent.approveAgent(
         agent,
         masterSignTypedData,
@@ -105,6 +160,7 @@ export class HyperliquidOrderService {
       
       if (!approvalResult.success) {
         if (approvalResult.needsDeposit) {
+          console.log('⚠️ Deposit required for user account')
           throw new Error('NEEDS_DEPOSIT')
         }
         throw new Error(approvalResult.error || 'Failed to approve agent wallet')
@@ -112,9 +168,9 @@ export class HyperliquidOrderService {
       
       console.log('✅ Agent approved successfully!')
       
-      // Save agent for future use
+      // Save the now-approved agent
       hyperliquidAgent.saveAgent(userAddress)
-      console.log('✅ Agent saved to localStorage')
+      console.log('✅ Saved approved agent to localStorage')
     } else {
       console.log('✅ Using existing approved agent:', agent.address)
     }

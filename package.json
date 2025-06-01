@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@msgpack/msgpack": "^3.1.2",
     "@nktkas/hyperliquid": "^0.21.1",
     "@radix-ui/react-progress": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",

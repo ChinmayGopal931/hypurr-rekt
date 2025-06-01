@@ -54,131 +54,164 @@ export class HyperliquidAgentService {
     return this.agentWallet
   }
 
-  /**
-   * Sign user-signed action (for agent approval)
+
+
+/**
+   * Sign user-signed action (FINAL FIX - matches Python SDK source exactly)
+   * Key differences from previous attempts:
+   * 1. Primary type includes namespace: "HyperliquidTransaction:ApproveAgent"
+   * 2. Types DO NOT include signatureChainId
+   * 3. Message to sign does NOT include signatureChainId
+   * 4. SignatureChainId is used only for domain.chainId and API request
    */
-  private async signUserSignedAction(
-    action: any,
-    masterSignTypedData: any
-  ): Promise<{ r: string; s: string; v: number }> {
-    const domain = {
-      name: 'HyperliquidSignTransaction',
-      version: '1',
-      chainId: this.useTestnet ? 421614 : 42161, // Use actual network chainId for user actions
-      verifyingContract: '0x0000000000000000000000000000000000000000'
-    }
-
-    const types = {
-      'HyperliquidTransaction:ApproveAgent': [
-        { name: 'hyperliquidChain', type: 'string' },
-        { name: 'signatureChainId', type: 'string' },
-        { name: 'agentAddress', type: 'address' },
-        { name: 'agentName', type: 'string' },
-        { name: 'nonce', type: 'uint64' }
-      ]
-    }
-
-    try {
-      const signature = await masterSignTypedData({
-        domain,
-        types,
-        primaryType: 'HyperliquidTransaction:ApproveAgent',
-        message: action
-      })
-
-      const sig = ethers.Signature.from(signature)
-      return {
-        r: sig.r,
-        s: sig.s,
-        v: sig.v
-      }
-    } catch (error) {
-      throw new Error(`Failed to sign agent approval: ${error}`)
-    }
+private async signUserSignedAction(
+  action: any,
+  masterSignTypedData: any
+): Promise<{ r: string; s: string; v: number }> {
+  // Domain uses the signatureChainId (testnet chainId)
+  const domain = {
+    name: 'HyperliquidSignTransaction',
+    version: '1',
+    chainId: this.useTestnet ? 421614 : 42161, // This comes from signatureChainId
+    verifyingContract: '0x0000000000000000000000000000000000000000'
   }
 
-  /**
-   * Approve agent wallet using master account
-   */
-  async approveAgent(
-    agentWallet: AgentWallet,
-    masterSignTypedData: any,
-    agentName: string = 'GameAgent'
-  ): Promise<{ success: boolean; error?: string; needsDeposit?: boolean }> {
-    try {
-      const nonce = Date.now()
+  // EIP-712 types EXACTLY from Python SDK - NO signatureChainId in types!
+  const types = {
+    'HyperliquidTransaction:ApproveAgent': [ // WITH namespace prefix
+      { name: 'hyperliquidChain', type: 'string' },
+      { name: 'agentAddress', type: 'address' },
+      { name: 'agentName', type: 'string' },
+      { name: 'nonce', type: 'uint64' }
+      // NOTE: signatureChainId is NOT in the types!
+    ]
+  }
+
+  console.log('🔍 PYTHON SDK Signing domain:', domain)
+  console.log('🔍 PYTHON SDK Signing message:', action)
+
+  try {
+    const signature = await masterSignTypedData({
+      domain,
+      types,
+      primaryType: 'HyperliquidTransaction:ApproveAgent', // WITH namespace prefix
+      message: action
+    })
+
+    console.log('🔍 PYTHON SDK Raw signature:', signature)
+
+    const sig = ethers.Signature.from(signature)
+    
+    // Verify the signature recovery
+    const recoveredAddress = ethers.verifyTypedData(domain, types, action, signature)
+    console.log('🔍 PYTHON SDK Recovered address:', recoveredAddress)
+    
+    return {
+      r: sig.r,
+      s: sig.s,
+      v: sig.v
+    }
+  } catch (error) {
+    console.error('❌ PYTHON SDK Signing failed:', error)
+    throw new Error(`Failed to sign agent approval: ${error}`)
+  }
+}
+
+/**
+ * Approve agent wallet (FINAL FIX - matches Python SDK exactly)
+ */
+async approveAgent(
+  agentWallet: AgentWallet,
+  masterSignTypedData: any,
+  agentName: string = 'GameAgent'
+): Promise<{ success: boolean; error?: string; needsDeposit?: boolean }> {
+  try {
+    const nonce = Date.now()
+    
+    // Create the message to sign (PYTHON SDK format - NO signatureChainId)
+    const messageToSign = {
+      hyperliquidChain: this.useTestnet ? 'Testnet' : 'Mainnet',
+      agentAddress: agentWallet.address,
+      agentName: agentName,
+      nonce: nonce
+      // NOTE: signatureChainId is NOT included in the message!
+    }
+
+    console.log('🔧 PYTHON SDK Signing message (exact format):', messageToSign)
+
+    // Sign the message
+    const signature = await this.signUserSignedAction(messageToSign, masterSignTypedData)
+
+    // Create the action for the API request (includes signatureChainId for API)
+    const action = {
+      type: 'approveAgent',
+      hyperliquidChain: this.useTestnet ? 'Testnet' : 'Mainnet',
+      signatureChainId: this.useTestnet ? '0x66eee' : '0xa4b1', // Added for API request
+      agentAddress: agentWallet.address,
+      agentName: agentName,
+      nonce: nonce
+    }
+
+    // Create the request structure matching Python SDK
+    const approvalRequest = {
+      action: action,
+      nonce: nonce,
+      signature: signature
+    }
+
+    console.log('🚀 PYTHON SDK Sending agent approval request:', {
+      agentAddress: agentWallet.address,
+      agentName: agentName,
+      network: this.useTestnet ? 'testnet' : 'mainnet',
+      requestStructure: 'Exact Python SDK format'
+    })
+
+    const response = await fetch(`${this.getApiUrl()}/exchange`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(approvalRequest)
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ Agent approval HTTP error:', errorText)
+      throw new Error(`HTTP ${response.status}: ${errorText}`)
+    }
+
+    const result = await response.json()
+    console.log('📥 PYTHON SDK Agent approval response:', result)
+
+    if (result.status === 'ok') {
+      agentWallet.isApproved = true
+      console.log('✅ PYTHON SDK Agent approved successfully!')
+      return { success: true }
+    } else {
+      console.error('❌ PYTHON SDK Agent approval failed:', result)
       
-      const action = {
-        type: 'approveAgent',
-        hyperliquidChain: this.useTestnet ? 'Testnet' : 'Mainnet',
-        signatureChainId: this.useTestnet ? '0x66eee' : '0xa4b1',
-        agentAddress: agentWallet.address,
-        agentName: agentName,
-        nonce: nonce
-      }
-
-      console.log('Approving agent with action:', action)
-
-      const signature = await this.signUserSignedAction(action, masterSignTypedData)
-
-      const approvalRequest = {
-        action,
-        nonce,
-        signature
-      }
-
-      console.log('Sending agent approval request:', {
-        agentAddress: agentWallet.address,
-        agentName: agentName,
-        network: this.useTestnet ? 'testnet' : 'mainnet'
-      })
-
-      const response = await fetch(`${this.getApiUrl()}/exchange`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(approvalRequest)
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Agent approval HTTP error:', errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
-
-      const result = await response.json()
-      console.log('Agent approval response:', result)
-
-      if (result.status === 'ok') {
-        agentWallet.isApproved = true
-        console.log('✅ Agent approved successfully!')
-        return { success: true }
-      } else {
-        console.error('❌ Agent approval failed:', result)
-        
-        // Check for specific deposit requirement error
-        if (result.response && result.response.includes('Must deposit before performing actions')) {
-          return { 
-            success: false, 
-            needsDeposit: true,
-            error: 'You need to deposit funds to Hyperliquid before approving an agent wallet.'
-          }
-        }
-        
+      // Check for specific deposit requirement error
+      if (result.response && result.response.includes('Must deposit before performing actions')) {
         return { 
           success: false, 
-          error: result.response || 'Agent approval failed'
+          needsDeposit: true,
+          error: 'You need to deposit funds to Hyperliquid before approving an agent wallet.'
         }
       }
-    } catch (error) {
-      console.error('Error approving agent:', error)
+      
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: result.response || 'Agent approval failed'
       }
     }
+  } catch (error) {
+    console.error('❌ PYTHON SDK Error approving agent:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    }
   }
+}
 
   /**
    * Create action hash using simplified approach
@@ -308,7 +341,7 @@ export class HyperliquidAgentService {
   }
 
   /**
-   * Save agent to localStorage (optional)
+   * Save agent to localStorage (including unapproved agents)
    */
   saveAgent(masterAddress: string): void {
     if (this.agentWallet) {
@@ -323,7 +356,7 @@ export class HyperliquidAgentService {
       
       try {
         localStorage.setItem(storageKey, JSON.stringify(agentData))
-        console.log('✅ Agent saved to localStorage:', storageKey)
+        console.log('✅ Agent saved to localStorage:', storageKey, 'Approved:', this.agentWallet.isApproved)
       } catch (error) {
         console.error('❌ Failed to save agent to localStorage:', error)
       }
