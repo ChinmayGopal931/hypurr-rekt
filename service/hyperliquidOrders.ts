@@ -568,16 +568,6 @@ export class HyperliquidOrderService {
     return agent
   }
 
-  /**
-   * Get the next nonce for a user
-   */
-  private getNextNonce(userAddress: string): number {
-    const currentNonce = this.userNonces.get(userAddress) || 0;
-    const nextNonce = currentNonce + 1;
-    this.userNonces.set(userAddress, nextNonce);
-    console.log(`🔢 Using nonce ${nextNonce} for user ${userAddress}`);
-    return nextNonce;
-  }
 
   /**
    * Generate a unique client order ID
@@ -1427,66 +1417,6 @@ export class HyperliquidOrderService {
   }
 
 
-  /**
-   * Close a position by placing an opposite order
-   * @param cloid Client order ID
-   * @returns Result of the close operation
-   */
-  private async closePositionById(cloid: string): Promise<{ success: boolean; error?: string }> {
-    const position = this.activePositions.get(cloid)
-    if (!position) {
-      return { success: false, error: 'Position not found' }
-    }
-
-    try {
-      // Close the position by placing an opposite order
-      const closeResult = await this.placePredictionOrder({
-        asset: position.asset,
-        direction: position.direction === 'up' ? 'down' : 'up',
-        size: position.size,
-        price: position.entryPrice,
-        timeWindow: 0 // No auto-close for close orders
-      },
-        // These parameters will be provided by the caller
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        undefined as any, // signTypedDataAsync
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        undefined as any // userAddress
-      )
-
-      if (closeResult?.success) {
-        // Mark position as closed
-        position.closed = true
-        position.exitPrice = closeResult.fillInfo?.fillPrice || position.entryPrice
-
-        // Determine if it's a win or loss
-        if (closeResult.fillInfo?.fillPrice) {
-          const isWin = position.direction === 'up'
-            ? closeResult.fillInfo.fillPrice > position.entryPrice
-            : closeResult.fillInfo.fillPrice < position.entryPrice
-
-          position.result = isWin ? 'win' : 'loss'
-
-          // Notify any callbacks
-          const callback = this.positionCallbacks.get(cloid)
-          if (callback) {
-            callback(position.result, closeResult.fillInfo.fillPrice)
-            this.positionCallbacks.delete(cloid)
-          }
-        }
-
-        return { success: true }
-      } else {
-        return { success: false, error: closeResult?.error || 'Failed to close position' }
-      }
-    } catch (error) {
-      console.error(`Error closing position ${cloid}:`, error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }
-    }
-  }
 
   /**
    * Register callback for position outcome
