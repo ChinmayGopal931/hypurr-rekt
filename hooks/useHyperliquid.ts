@@ -424,12 +424,39 @@ export function useHyperliquid(): UseHyperliquidReturn {
     }
   }, [assetsMetadataRef.current.length])
 
-  // Connection status monitoring
+  // Connection status monitoring and automatic reconnection
   useEffect(() => {
     const checkConnection = setInterval(() => {
+      // Increase timeout to 10 seconds to reduce false disconnections
       if (lastUpdate && Date.now() - lastUpdate.getTime() > 10000) {
-        // No update for 10 seconds, consider disconnected
+        console.log('No price updates received for 10 seconds, attempting reconnection...')
+
+        // Mark as disconnected for UI feedback
         setIsConnected(false)
+
+        // Attempt to reconnect by disconnecting and resubscribing
+        hyperliquid.disconnect()
+
+        // Short delay before reconnecting to allow cleanup
+        setTimeout(() => {
+          if (assetsMetadataRef.current.length > 0) {
+            console.log('Attempting to reestablish WebSocket connection...')
+            hyperliquid.subscribeToAllMids((prices) => {
+              // This will be called when new prices arrive after reconnection
+              try {
+                const transformedAssets = transformAssets(assetsMetadataRef.current, prices)
+                setAssets(transformedAssets)
+                setIsConnected(true)
+                setLastUpdate(new Date())
+                setError(null)
+                console.log('Connection reestablished, received', Object.keys(prices).length, 'prices')
+              } catch (err) {
+                console.error('Error processing price update after reconnection:', err)
+                setError('Error processing price data')
+              }
+            })
+          }
+        }, 1000)
       }
     }, 5000)
 

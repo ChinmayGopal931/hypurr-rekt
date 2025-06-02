@@ -41,7 +41,21 @@ export function GameInterface({
 }: GameInterfaceProps) {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [timeWindow, setTimeWindow] = useState<number>(30)
-  const [selectedLeverage, setSelectedLeverage] = useState<number>(40)
+  const [selectedLeverage, setSelectedLeverage] = useState<number>(10)
+
+  // Update leverage when asset changes
+  useEffect(() => {
+    if (selectedAsset) {
+      // Set default leverage based on asset, using only available options (10x, 20x, 30x, 40x)
+      if (selectedAsset.id === 'BTC') {
+        setSelectedLeverage(40) // Max for BTC is 40x
+      } else if (selectedAsset.id === 'ETH') {
+        setSelectedLeverage(20) // ETH max is 25x, closest option is 20x
+      } else {
+        setSelectedLeverage(40) // Max for other assets is 40x
+      }
+    }
+  }, [selectedAsset])
   const [countdownTime, setCountdownTime] = useState<number>(0)
   const [walletReady, setWalletReady] = useState(false)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)

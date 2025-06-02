@@ -14,9 +14,9 @@ interface CombinedSettingsSelectorProps {
 }
 
 const TIME_OPTIONS = [
-  { value: 15, label: '15s', color: 'bg-red-500 hover:bg-red-600' },
-  { value: 30, label: '30s', color: 'bg-orange-500 hover:bg-orange-600' },
-  { value: 60, label: '60s', color: 'bg-green-500 hover:bg-green-600' },
+  { value: 30, label: '30s', color: 'bg-red-500 hover:bg-red-600' },
+  { value: 60, label: '60s', color: 'bg-orange-500 hover:bg-orange-600' },
+  { value: 120, label: '120s', color: 'bg-green-500 hover:bg-green-600' },
 ]
 
 export function CombinedSettingsSelector({

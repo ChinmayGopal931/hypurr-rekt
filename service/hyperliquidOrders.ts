@@ -87,12 +87,13 @@ export class HyperliquidOrderService {
   private static readonly BASE_USD_SIZE = 10 // Base $10 per prediction
   private static readonly BASE_LEVERAGE = 10 // ✅ Changed from 20 to 10 - this is the baseline leverage
   private static readonly MARGIN_AMOUNT = 10 // $10 margin per trade
-
+  private static readonly MAX_CLOSE_RETRIES = 3 // Maximum number of retries for closing a position
 
   private useTestnet: boolean = true
-  private activePositions: Map<string, PositionInfo> = new Map()
-  private positionCallbacks: Map<string, (result: 'win' | 'loss', exitPrice: number) => void> = new Map()
-  private autoCloseTimeouts: Map<string, NodeJS.Timeout> = new Map()
+  private readonly activePositions = new Map<string, PositionInfo>()
+  private readonly positionCallbacks = new Map<string, (result: 'win' | 'loss', exitPrice: number) => void>()
+  private readonly autoCloseTimeouts = new Map<string, NodeJS.Timeout>()
+  private readonly closeRetryCount = new Map<string, number>()
   private userNonces: Map<string, number> = new Map()
 
   constructor(useTestnet: boolean = true) {
@@ -156,14 +157,52 @@ export class HyperliquidOrderService {
 
           // Clean up position tracking
           this.activePositions.delete(cloid)
+          this.closeRetryCount.delete(cloid)
           console.log(`✅ Successfully auto-closed position ${cloid}`)
         } else {
           console.error(`❌ Failed to auto-close position ${cloid}:`, closeResult.error)
-          // Still notify callback with loss if close failed
-          const callback = this.positionCallbacks.get(cloid)
-          if (callback) {
-            callback('loss', position.entryPrice)
-            this.positionCallbacks.delete(cloid)
+          
+          // Get current retry count or initialize to 0
+          const currentRetries = this.closeRetryCount.get(cloid) || 0
+          
+          // Check if we've reached the maximum retry count
+          if (currentRetries >= HyperliquidOrderService.MAX_CLOSE_RETRIES) {
+            console.warn(`⚠️ Maximum retry attempts (${HyperliquidOrderService.MAX_CLOSE_RETRIES}) reached for position ${cloid}`)
+            console.warn(`⚠️ Position ${cloid} could not be closed automatically after multiple attempts`)
+            
+            // Mark as a loss since we couldn't close it properly
+            position.result = 'loss'
+            
+            // Notify callback with loss result
+            const callback = this.positionCallbacks.get(cloid)
+            if (callback) {
+              callback('loss', position.entryPrice)
+              this.positionCallbacks.delete(cloid)
+            }
+            
+            // Clean up tracking but keep a record that this position had issues
+            this.activePositions.delete(cloid)
+            this.closeRetryCount.delete(cloid)
+            console.log(`⚠️ Position ${cloid} marked as loss due to failure to close after ${currentRetries} retries`)
+          } else {
+            // Increment retry count
+            this.closeRetryCount.set(cloid, currentRetries + 1)
+            
+            // Schedule a retry with exponential backoff (5s, 10s, 20s)
+            const retryDelayMs = 5000 * Math.pow(2, currentRetries)
+            console.log(`⏳ Scheduling retry ${currentRetries + 1}/${HyperliquidOrderService.MAX_CLOSE_RETRIES} for position ${cloid} in ${retryDelayMs/1000}s...`)
+            
+            // Clear the current timeout since we're rescheduling
+            this.autoCloseTimeouts.delete(cloid)
+            
+            // Set a new timeout for retry
+            const retryTimeoutId = setTimeout(() => {
+              console.log(`⏰ Retry #${currentRetries + 1} for auto-close of position ${cloid}`)
+              this.scheduleAutoClose(cloid, 0) // Immediate retry
+            }, retryDelayMs)
+            
+            // Store the retry timeout ID
+            this.autoCloseTimeouts.set(cloid, retryTimeoutId)
           }
         }
       } catch (error) {
@@ -208,7 +247,7 @@ export class HyperliquidOrderService {
   // Fix for the closePositionAtMarketPrice method in hyperliquidOrders.ts
 
   /**
-   * Close position at current market price using aggressive pricing - ROBUST VERSION
+   * Close position at current market price using market pricing - ROBUST VERSION
    */
   private async closePositionAtMarketPrice(position: PositionInfo): Promise<{
     success: boolean
@@ -291,22 +330,19 @@ export class HyperliquidOrderService {
         }
       }
 
-      // Calculate aggressive price for immediate execution (opposite direction)
-      const isClosingLong = position.direction === 'up'
-      const aggressivePriceMultiplier = isClosingLong ? 0.98 : 1.02 // Reverse of opening
-      const aggressivePriceRaw = currentPrice * aggressivePriceMultiplier
-      const aggressivePrice = this.formatPrice(aggressivePriceRaw, assetConfig.szDecimals)
+      // Calculate market price for immediate execution (opposite direction)
+      const marketPrice = this.formatPrice(currentPrice, assetConfig.szDecimals)
 
       // ✅ Final validation
-      if (!aggressivePrice || !positionSize) {
-        console.warn(`⚠️ Missing required values, using market price: aggressivePrice=${aggressivePrice}, size=${positionSize}`)
+      if (!marketPrice || !positionSize) {
+        console.warn(`⚠️ Missing required values, using market price: marketPrice=${marketPrice}, size=${positionSize}`)
         return {
           success: true,
-          exitPrice: currentPrice
+          exitPrice: parseFloat(marketPrice)
         }
       }
 
-      console.log(`💰 Closing at aggressive price: ${aggressivePrice} (market: ${currentPrice}) size: ${positionSize}`)
+      console.log(`💰 Closing at market price: ${marketPrice} size: ${positionSize}`)
 
       // Generate cloid for close order
       const closeCloid = this.generateCloid()
@@ -314,8 +350,8 @@ export class HyperliquidOrderService {
       // ✅ Create closing order with validation
       const closeOrder = {
         a: assetConfig.assetId, // asset index
-        b: !isClosingLong, // Opposite direction
-        p: aggressivePrice, // price as string
+        b: !position.direction, // Opposite direction
+        p: marketPrice, // price as string
         s: positionSize, // ✅ Use validated position size
         r: true, // reduceOnly = true for closing
         t: { limit: { tif: 'Ioc' } }, // Immediate or Cancel
@@ -415,16 +451,18 @@ export class HyperliquidOrderService {
               exitPrice: exitPrice
             }
           } else {
-            console.warn('⚠️ Close order not filled, using market price')
+            console.warn('⚠️ Close order not filled, cannot close position')
             return {
-              success: true,
+              success: false,
+              error: 'Close order not filled',
               exitPrice: currentPrice
             }
           }
         } else {
-          console.warn('⚠️ Close order failed, using market price')
+          console.warn('⚠️ Close order failed, cannot close position')
           return {
-            success: true,
+            success: false,
+            error: 'Close order API call failed',
             exitPrice: currentPrice
           }
         }
@@ -432,7 +470,8 @@ export class HyperliquidOrderService {
       } catch (signingOrApiError) {
         console.warn('⚠️ Error signing or sending close order:', signingOrApiError)
         return {
-          success: true,
+          success: false,
+          error: 'Error signing or sending close order',
           exitPrice: currentPrice
         }
       }
@@ -445,9 +484,10 @@ export class HyperliquidOrderService {
         const currentPrices = await this.getCurrentPrices()
         const fallbackPrice = currentPrices[position.asset]
         if (fallbackPrice) {
-          console.log(`✅ Using fallback market price as exit: $${fallbackPrice}`)
+          console.log(`⚠️ Could not close position, using fallback market price for reference: $${fallbackPrice}`)
           return {
-            success: true,
+            success: false,
+            error: 'Could not close position, using fallback price',
             exitPrice: fallbackPrice
           }
         }
@@ -457,10 +497,11 @@ export class HyperliquidOrderService {
 
       // Ultimate fallback - use entry price or a reasonable default
       const ultimateFallback = position.fillPrice || position.entryPrice || 50000
-      console.log(`✅ Using ultimate fallback price: $${ultimateFallback}`)
+      console.log(`⚠️ Failed to close position, using ultimate fallback price for reference: $${ultimateFallback}`)
 
       return {
-        success: true,
+        success: false,
+        error: 'Failed to close position after all attempts',
         exitPrice: ultimateFallback
       }
     }
@@ -828,7 +869,7 @@ export class HyperliquidOrderService {
 
 
   /**
-   * Place a prediction order using aggressive limit orders for immediate execution
+   * Place a prediction order using market pricing for immediate execution
    * Orders fill immediately at market price, then auto-close after timer expires
    */
   async placePredictionOrder(
@@ -836,7 +877,7 @@ export class HyperliquidOrderService {
     signTypedDataAsync: SignTypedDataFunction,
     userAddress: string
   ): Promise<OrderResponse> {
-    console.log('🔍 Starting placePredictionOrder with aggressive limit orders:', {
+    console.log('🔍 Starting placePredictionOrder with market pricing:', {
       asset: request.asset,
       direction: request.direction,
       price: request.price,
@@ -933,21 +974,14 @@ export class HyperliquidOrderService {
       // ✅ STEP 2: Calculate position size based on TRUE leverage
       const expectedPositionValue = 10 * targetLeverage // $10 margin × leverage
 
-
-
-      // Calculate aggressive price for immediate fill
-      const aggressivePriceMultiplier = request.direction === 'up' ? 1.02 : 0.98;
-      const aggressivePriceRaw = request.price * aggressivePriceMultiplier;
-      const aggressivePrice = this.formatPrice(aggressivePriceRaw, assetConfig.szDecimals);
-
       // ✅ Calculate order size using TRUE leverage
       const orderSize = this.calculateOrderSizeWithTrueLeverage(
-        aggressivePriceRaw,
+        request.price,
         assetConfig.szDecimals,
         targetLeverage
       )
 
-      const actualOrderValue = parseFloat(orderSize) * parseFloat(aggressivePrice);
+      const actualOrderValue = parseFloat(orderSize) * request.price;
 
       console.log('💰 TRUE LEVERAGE ORDER SUMMARY:', {
         marginUsed: `$${HyperliquidOrderService.MARGIN_AMOUNT}`,
@@ -955,7 +989,7 @@ export class HyperliquidOrderService {
         expectedPositionValue: `$${expectedPositionValue}`,
         actualPositionValue: `$${actualOrderValue.toFixed(2)}`,
         orderSize: orderSize,
-        aggressivePrice: aggressivePrice,
+        marketPrice: request.price,
         difference: `$${Math.abs(actualOrderValue - expectedPositionValue).toFixed(2)}`,
         accuracyPercentage: `${((actualOrderValue / expectedPositionValue) * 100).toFixed(1)}%`
       });
@@ -977,12 +1011,11 @@ export class HyperliquidOrderService {
       const marketPrice = this.formatPrice(request.price, assetConfig.szDecimals)
       const cloid = this.generateCloid()
 
-      console.log('📊 Aggressive order parameters:', {
+      console.log('📊 Market order parameters:', {
         asset: request.asset,
         assetId: assetConfig.assetId,
         direction: request.direction,
         marketPrice: marketPrice,
-        aggressivePrice: aggressivePrice, // Now properly formatted as string
         priceAdjustment: `${request.direction === 'up' ? '+' : '-'}2%`,
         finalOrderSize: orderSize,
         actualOrderValue: actualOrderValue,
@@ -991,11 +1024,11 @@ export class HyperliquidOrderService {
       })
 
       try {
-        // ✅ Create aggressive limit order for immediate execution
+        // ✅ Create market price limit order for immediate execution
         const order = {
           a: assetConfig.assetId, // asset index (number)
           b: request.direction === 'up', // isBuy (boolean)
-          p: aggressivePrice, // ✅ NOW PROPERLY FORMATTED AS STRING
+          p: marketPrice, // ✅ NOW PROPERLY FORMATTED AS STRING
           s: orderSize, // size as string (in base units)
           r: false, // reduceOnly (always false for opening positions)
           t: { limit: { tif: 'Ioc' } }, // ✅ IOC = Immediate or Cancel
@@ -1012,7 +1045,7 @@ export class HyperliquidOrderService {
         // Use current timestamp in milliseconds as nonce
         const nonce = Date.now();
         console.log(`⏱️ Using timestamp as nonce: ${nonce}`);
-        console.log('📊 Aggressive limit order created:', JSON.stringify(order, null, 2));
+        console.log('📊 Market limit order created:', JSON.stringify(order, null, 2));
 
         // Import the signing function from the SDK
         const { signL1Action } = await import('@nktkas/hyperliquid/signing');
@@ -1020,7 +1053,7 @@ export class HyperliquidOrderService {
 
         // Get the agent wallet
         const agentWallet = await this.initializeAgent(address, signTypedDataAsync);
-        console.log('🔍 Signing aggressive order with agent...');
+        console.log('🔍 Signing market order with agent...');
 
         // Convert private key to account
         const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`);
@@ -1033,7 +1066,7 @@ export class HyperliquidOrderService {
           isTestnet: this.useTestnet
         });
 
-        console.log('✅ Aggressive order signed with agent');
+        console.log('✅ Market order signed with agent');
 
         // Prepare the final request object matching the reference format
         const exchangeRequest = { action, signature, nonce };
@@ -1052,7 +1085,7 @@ export class HyperliquidOrderService {
         const responseText = await response.text()
 
         if (!response.ok) {
-          console.error('❌ Aggressive order request failed:', {
+          console.error('❌ Market order request failed:', {
             status: response.status,
             statusText: response.statusText,
             response: responseText
@@ -1071,11 +1104,11 @@ export class HyperliquidOrderService {
           throw new Error('Invalid JSON response from exchange')
         }
 
-        console.log('📥 Received aggressive order response:', JSON.stringify(result, null, 2))
+        console.log('📥 Received market order response:', JSON.stringify(result, null, 2))
 
         if (result.status !== 'ok') {
           const errorMsg = result.error?.message || JSON.stringify(result)
-          console.error('Aggressive order failed with response:', errorMsg)
+          console.error('Market order failed with response:', errorMsg)
           throw new Error(`Order failed: ${errorMsg}`)
         }
 
@@ -1093,7 +1126,7 @@ export class HyperliquidOrderService {
 
         if (orderStatus.filled) {
           // ✅ Order filled immediately (expected behavior)
-          console.log('✅ Aggressive order filled immediately:', orderStatus)
+          console.log('✅ Market order filled immediately:', orderStatus)
 
           // ✅ Extract data from the nested filled object
           const fillData = orderStatus.filled
@@ -1123,6 +1156,9 @@ export class HyperliquidOrderService {
           }
 
           this.activePositions.set(cloid, position)
+          
+          // Initialize retry count for this position
+          this.closeRetryCount.set(cloid, 0)
 
           console.log('💾 Stored position:', {
             cloid,
@@ -1149,8 +1185,8 @@ export class HyperliquidOrderService {
           }
 
         } else if (orderStatus.resting) {
-          // ✅ Order didn't fill immediately - this shouldn't happen with aggressive pricing, but handle it
-          console.warn('⚠️ Aggressive order resting (unusual - might need more aggressive pricing):', orderStatus)
+          // ✅ Order didn't fill immediately - this shouldn't happen with market pricing, but handle it
+          console.warn('⚠️ Market order resting (unusual - might need more market pricing):', orderStatus)
 
           // ✅ Extract data from the nested resting object
           const restingData = orderStatus.resting
@@ -1162,7 +1198,7 @@ export class HyperliquidOrderService {
             cloid: cloid,
             asset: request.asset,
             direction: request.direction,
-            entryPrice: parseFloat(aggressivePrice), // ✅ Use formatted aggressive price
+            entryPrice: parseFloat(marketPrice), // ✅ Use formatted market price
             size: orderSize, // ✅ Use calculated order size
             timestamp: Date.now(),
             timeWindow: request.timeWindow,
@@ -1194,7 +1230,7 @@ export class HyperliquidOrderService {
           }
         } else {
           // Order rejected or failed
-          console.error('Aggressive order not filled:', orderStatus)
+          console.error('Market order not filled:', orderStatus)
           return {
             success: false,
             error: `Order not filled: ${JSON.stringify(orderStatus)}`,
