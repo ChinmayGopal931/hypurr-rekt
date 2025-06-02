@@ -13,6 +13,7 @@
     "@nktkas/hyperliquid": "^0.21.1",
     "@noble/curves": "^1.9.1",
     "@noble/hashes": "^1.8.0",
+    "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-progress": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@rainbow-me/rainbowkit": "^2.2.5",
