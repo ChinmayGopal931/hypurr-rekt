@@ -15,7 +15,7 @@ export function PredictionButtons({ onPredict, disabled }: PredictionButtonsProp
         <h2 className="text-2xl font-bold text-white mb-2">Make Your Prediction</h2>
         <p className="text-slate-400">Will the price go UP or DOWN?</p>
       </div>
-      
+
       <div className="grid grid-cols-2 gap-6">
         {/* UP Button */}
         <motion.div
@@ -42,7 +42,7 @@ export function PredictionButtons({ onPredict, disabled }: PredictionButtonsProp
                 <div className="text-sm opacity-75">LONG</div>
               </div>
             </div>
-            
+
             {/* Animated background effect */}
             <motion.div
               className="absolute inset-0 bg-white/10"
@@ -78,7 +78,7 @@ export function PredictionButtons({ onPredict, disabled }: PredictionButtonsProp
                 <div className="text-sm opacity-75">SHORT</div>
               </div>
             </div>
-            
+
             {/* Animated background effect */}
             <motion.div
               className="absolute inset-0 bg-white/10"
@@ -89,7 +89,7 @@ export function PredictionButtons({ onPredict, disabled }: PredictionButtonsProp
           </Button>
         </motion.div>
       </div>
-      
+
       <div className="text-center text-sm text-slate-400">
         Choose your direction and let's see if you can predict the market!
       </div>

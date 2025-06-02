@@ -1,17 +1,15 @@
 // GameCompletionModal.tsx - New component for dramatic game completion
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Dialog, DialogContent, DialogHeader } from './ui/dialog'
+import { Dialog, DialogContent } from './ui/dialog'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Card } from './ui/card'
-import { 
-  Trophy, 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Target, 
-  Clock,
+import {
+  Trophy,
+  TrendingUp,
+  TrendingDown,
+  Target,
   Zap,
   PlayCircle,
   BarChart3
@@ -46,7 +44,7 @@ export function GameCompletionModal({
   const priceDiff = actualExitPrice - prediction.entryPrice
   const priceMovement = Math.abs(priceDiff)
   const percentageMove = (priceMovement / prediction.entryPrice) * 100
-  
+
   // Calculate estimated P&L (rough calculation)
   const estimatedPnL = (positionValue * percentageMove) / 100
   const leveragedPnL = estimatedPnL * (isWin ? 1 : -1)
@@ -68,13 +66,13 @@ export function GameCompletionModal({
   }, [isOpen])
 
   const modalVariants = {
-    hidden: { 
-      opacity: 0, 
+    hidden: {
+      opacity: 0,
       scale: 0.8,
       y: 50
     },
-    visible: { 
-      opacity: 1, 
+    visible: {
+      opacity: 1,
       scale: 1,
       y: 0,
       transition: {
@@ -84,8 +82,8 @@ export function GameCompletionModal({
         staggerChildren: 0.1
       }
     },
-    exit: { 
-      opacity: 0, 
+    exit: {
+      opacity: 0,
       scale: 0.8,
       y: 50,
       transition: {
@@ -96,8 +94,8 @@ export function GameCompletionModal({
 
   const childVariants = {
     hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
+    visible: {
+      opacity: 1,
       y: 0,
       transition: { duration: 0.3 }
     }
@@ -116,7 +114,7 @@ export function GameCompletionModal({
               className="space-y-6"
             >
               {/* Header with dramatic result */}
-              <motion.div 
+              <motion.div
                 variants={childVariants}
                 className="text-center space-y-4"
               >
@@ -125,11 +123,10 @@ export function GameCompletionModal({
                   initial={{ scale: 0 }}
                   animate={{ scale: 1, rotate: 360 }}
                   transition={{ delay: 0.2, duration: 0.5 }}
-                  className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center ${
-                    isWin 
-                      ? 'bg-green-500/20 text-green-400' 
-                      : 'bg-red-500/20 text-red-400'
-                  }`}
+                  className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center ${isWin
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-red-500/20 text-red-400'
+                    }`}
                 >
                   {isWin ? (
                     <Trophy className="w-10 h-10" />
@@ -140,9 +137,8 @@ export function GameCompletionModal({
 
                 {/* Result Text */}
                 <motion.div variants={childVariants}>
-                  <div className={`text-4xl font-bold mb-2 ${
-                    isWin ? 'text-green-400' : 'text-red-400'
-                  }`}>
+                  <div className={`text-4xl font-bold mb-2 ${isWin ? 'text-green-400' : 'text-red-400'
+                    }`}>
                     {isWin ? '🎉 YOU WON!' : '💔 YOU LOST'}
                   </div>
                   <div className="text-slate-400">
@@ -151,7 +147,7 @@ export function GameCompletionModal({
                 </motion.div>
 
                 {/* Price Movement Display */}
-                <motion.div 
+                <motion.div
                   variants={childVariants}
                   className="bg-slate-800/50 rounded-lg p-4"
                 >
@@ -162,10 +158,9 @@ export function GameCompletionModal({
                         ${prediction.entryPrice.toLocaleString()}
                       </div>
                     </div>
-                    
-                    <div className={`flex items-center space-x-1 ${
-                      isWin ? 'text-green-400' : 'text-red-400'
-                    }`}>
+
+                    <div className={`flex items-center space-x-1 ${isWin ? 'text-green-400' : 'text-red-400'
+                      }`}>
                       {prediction.direction === 'up' ? (
                         <TrendingUp className="w-6 h-6" />
                       ) : (
@@ -173,7 +168,7 @@ export function GameCompletionModal({
                       )}
                       <Zap className="w-4 h-4" />
                     </div>
-                    
+
                     <div className="text-center">
                       <div className="text-slate-400 text-sm">Exit</div>
                       <div className="text-white font-mono text-lg">
@@ -184,14 +179,12 @@ export function GameCompletionModal({
 
                   {/* Price Change */}
                   <div className="text-center">
-                    <div className={`text-2xl font-bold font-mono ${
-                      isWin ? 'text-green-400' : 'text-red-400'
-                    }`}>
+                    <div className={`text-2xl font-bold font-mono ${isWin ? 'text-green-400' : 'text-red-400'
+                      }`}>
                       {priceDiff > 0 ? '+' : ''}${priceDiff.toFixed(2)}
                     </div>
-                    <div className={`text-sm ${
-                      isWin ? 'text-green-400' : 'text-red-400'
-                    }`}>
+                    <div className={`text-sm ${isWin ? 'text-green-400' : 'text-red-400'
+                      }`}>
                       {percentageMove.toFixed(3)}% move
                     </div>
                   </div>
@@ -226,9 +219,8 @@ export function GameCompletionModal({
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-400">Direction:</span>
-                              <div className={`flex items-center space-x-1 ${
-                                prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'
-                              }`}>
+                              <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'
+                                }`}>
                                 {prediction.direction === 'up' ? (
                                   <TrendingUp className="w-3 h-3" />
                                 ) : (
@@ -242,7 +234,7 @@ export function GameCompletionModal({
                               <span className="text-blue-400">{leverage}x</span>
                             </div>
                           </div>
-                          
+
                           <div className="space-y-2">
                             <div className="flex justify-between">
                               <span className="text-slate-400">Position:</span>
@@ -254,9 +246,8 @@ export function GameCompletionModal({
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-400">Est. P&L:</span>
-                              <span className={`font-mono ${
-                                isWin ? 'text-green-400' : 'text-red-400'
-                              }`}>
+                              <span className={`font-mono ${isWin ? 'text-green-400' : 'text-red-400'
+                                }`}>
                                 {leveragedPnL > 0 ? '+' : ''}${leveragedPnL.toFixed(2)}
                               </span>
                             </div>
@@ -269,14 +260,14 @@ export function GameCompletionModal({
               </motion.div>
 
               {/* Stats Update */}
-              <motion.div 
+              <motion.div
                 variants={childVariants}
                 className="bg-slate-800/30 rounded-lg p-4"
               >
                 <div className="text-center mb-3">
                   <div className="text-slate-400 text-sm">Updated Stats</div>
                 </div>
-                
+
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
                     <div className="text-2xl font-bold text-white">
@@ -284,14 +275,14 @@ export function GameCompletionModal({
                     </div>
                     <div className="text-slate-400 text-xs">Total Games</div>
                   </div>
-                  
+
                   <div>
                     <div className="text-2xl font-bold text-green-400">
                       {gameStats.wins}
                     </div>
                     <div className="text-slate-400 text-xs">Wins</div>
                   </div>
-                  
+
                   <div>
                     <div className="text-2xl font-bold text-blue-400">
                       {gameStats.winRate.toFixed(1)}%
@@ -314,22 +305,21 @@ export function GameCompletionModal({
               </motion.div>
 
               {/* Action Buttons */}
-              <motion.div 
+              <motion.div
                 variants={childVariants}
                 className="flex space-x-3"
               >
                 <Button
                   onClick={onPlayAgain}
-                  className={`flex-1 ${
-                    isWin 
-                      ? 'bg-green-600 hover:bg-green-700' 
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
+                  className={`flex-1 ${isWin
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
                 >
                   <PlayCircle className="w-4 h-4 mr-2" />
                   Play Again
                 </Button>
-                
+
                 <Button
                   variant="outline"
                   onClick={onClose}

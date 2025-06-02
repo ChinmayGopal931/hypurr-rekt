@@ -16,7 +16,7 @@ export function useWallet() {
       enabled: isConnected,
     },
   });
-  
+
   const { signMessageAsync } = useSignMessage();
   const { signTypedDataAsync } = useSignTypedData();
 
@@ -55,6 +55,6 @@ export function useWallet() {
     signTypedData,
     getSigner: () => null, // Not needed with RainbowKit/Wagmi
     getProvider: () => null, // Not needed with RainbowKit/Wagmi
-    disconnect: () => {}, // Disconnection is handled by RainbowKit
+    disconnect: () => { }, // Disconnection is handled by RainbowKit
   };
 }

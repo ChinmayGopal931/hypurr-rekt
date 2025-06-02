@@ -15,9 +15,9 @@ interface WalletConnectionProps {
 export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
   const { address, isConnected, chain } = useAccount()
   const { data: balance } = useBalance({ address })
-  
+
   // Use consolidated Hyperliquid hook for position data
-  const { getActivePositions, isWalletConnected } = useHyperliquid()
+  const { getActivePositions } = useHyperliquid()
   const activePositions = getActivePositions()
 
   // Notify parent when wallet is ready
@@ -78,7 +78,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-2">
             {chain && (
               <a
@@ -91,7 +91,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
                 <ExternalLink className="w-4 h-4" />
               </a>
             )}
-            <ConnectButton 
+            <ConnectButton
               showBalance={false}
               chainStatus="none"
               accountStatus="avatar"
@@ -122,7 +122,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
         <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto">
           <Wallet className="w-8 h-8 text-blue-400" />
         </div>
-        
+
         <div>
           <h3 className="text-xl font-bold text-white mb-2">Connect Your Wallet</h3>
           <p className="text-slate-400 text-sm">
@@ -135,7 +135,6 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
             {({
               account,
               chain,
-              openAccountModal,
               openChainModal,
               openConnectModal,
               authenticationStatus,
@@ -193,7 +192,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
               );
             }}
           </ConnectButton.Custom>
-          
+
           <div className="text-xs text-slate-500 space-y-1">
             <div>• Arbitrum Sepolia testnet required</div>
             <div>• $10 prediction size per trade</div>

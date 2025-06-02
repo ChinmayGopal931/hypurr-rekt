@@ -5,7 +5,7 @@ import { Progress } from './ui/progress'
 import { Clock, Target, TrendingUp, TrendingDown, DollarSign, Loader2, Zap, Flame, Trophy } from 'lucide-react'
 import { Prediction } from '@/app/page'
 import { useHyperliquid } from '@/hooks/useHyperliquid'
-import { Line, Area, AreaChart, LineChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 
 interface GameTimerProps {
@@ -47,19 +47,16 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
   // Price chart data
   const [priceHistory, setPriceHistory] = useState<PriceDataPoint[]>([])
   const [isWinning, setIsWinning] = useState<boolean | null>(null)
-  const [showChart, setShowChart] = useState(true) // Collapsible chart
-  const [chartType, setChartType] = useState<'area' | 'line'>('area') // Chart type selector
   const gameStartTime = useRef<number>(Date.now())
   const lastPriceRef = useRef<number | null>(null)
-  const maxPointsRef = useRef<number>(100) // Limit chart points for performance
 
   // Chart configuration for shadcn
   const chartConfig = {
     price: {
       label: "Price",
-      color: isWinning === true ? "hsl(var(--chart-1))" : 
-             isWinning === false ? "hsl(var(--chart-5))" : 
-             "hsl(var(--chart-3))"
+      color: isWinning === true ? "hsl(var(--chart-1))" :
+        isWinning === false ? "hsl(var(--chart-5))" :
+          "hsl(var(--chart-3))"
     },
     entryPrice: {
       label: "Entry Price",
@@ -68,11 +65,11 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
   } satisfies ChartConfig
 
   // Get Hyperliquid hooks
-  const { 
-    address, 
-    isWalletConnected, 
-    getAssetPnL, 
-    startPnLPolling 
+  const {
+    address,
+    isWalletConnected,
+    getAssetPnL,
+    startPnLPolling
   } = useHyperliquid()
 
   // Initialize game start time when prediction starts
@@ -80,9 +77,9 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     if (type === 'game' && prediction) {
       gameStartTime.current = Date.now()
       setPriceHistory([])
-      
+
       console.log(`🎮 Game started for ${prediction.asset.symbol} - Direction: ${prediction.direction} - Entry: ${prediction.entryPrice}`)
-      
+
       // Add initial price point
       if (currentPrice) {
         const initialPoint: PriceDataPoint = {
@@ -107,7 +104,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     const updateInterval = setInterval(() => {
       const now = Date.now()
       const elapsed = (now - gameStartTime.current) / 1000
-      
+
       if (elapsed <= initialTime && elapsed > 0) {
         const newPoint: PriceDataPoint = {
           time: elapsed,
@@ -119,7 +116,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         setPriceHistory(prev => {
           // Always add new point every second, even if price hasn't changed
           const newHistory = [...prev, newPoint]
-          
+
           // For 30-second games, keep more frequent updates
           const maxPoints = initialTime <= 60 ? initialTime * 2 : 100
           if (newHistory.length > maxPoints) {
@@ -132,7 +129,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         const priceDiff = currentPrice - prediction.entryPrice
         const newIsWinning = prediction.direction === 'up' ? priceDiff > 0 : priceDiff < 0
         setIsWinning(newIsWinning)
-        
+
         console.log(`Chart update: ${elapsed.toFixed(1)}s - Price: ${currentPrice} - ${newIsWinning ? 'WINNING' : 'LOSING'}`)
       }
     }, 500) // Update every 500ms for smooth movement
@@ -145,7 +142,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     if (type === 'game' && currentPrice && lastPriceRef.current !== currentPrice && prediction) {
       const now = Date.now()
       const elapsed = (now - gameStartTime.current) / 1000
-      
+
       if (elapsed <= initialTime && elapsed > 0) {
         const newPoint: PriceDataPoint = {
           time: elapsed,
@@ -216,7 +213,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
 
         try {
           const assetPnL = await getAssetPnL(address, prediction.asset.id)
-          
+
           if (assetPnL) {
             setRealTimePnL({
               unrealizedPnl: assetPnL.unrealizedPnl,
@@ -261,14 +258,14 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
   // Fallback to price-based calculation if real P&L is not available
   const getFallbackPnL = useCallback(() => {
     if (!prediction || !currentPrice) return null
-    
+
     const priceDiff = currentPrice - prediction.entryPrice
     const percentage = (priceDiff / prediction.entryPrice) * 100
-    
-    const isWinning = 
+
+    const isWinning =
       (prediction.direction === 'up' && priceDiff > 0) ||
       (prediction.direction === 'down' && priceDiff < 0)
-    
+
     return {
       value: Math.abs(percentage),
       isWinning,
@@ -281,7 +278,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     if (realTimePnL.lastUpdate && !realTimePnL.error) {
       const isWinning = realTimePnL.unrealizedPnl > 0
       const isLosing = realTimePnL.unrealizedPnl < 0
-      
+
       return {
         value: Math.abs(realTimePnL.returnOnEquity),
         dollarValue: Math.abs(realTimePnL.unrealizedPnl),
@@ -293,7 +290,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     } else {
       const fallback = getFallbackPnL()
       if (!fallback) return null
-      
+
       return {
         value: fallback.value,
         dollarValue: null,
@@ -325,7 +322,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     }
     return {
       stroke: 'hsl(var(--chart-3))', // Blue
-      fill: 'url(#blueGradient)', 
+      fill: 'url(#blueGradient)',
       glow: 'shadow-blue-500/50'
     }
   }
@@ -339,7 +336,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
           <Clock className="w-6 h-6 text-blue-400" />
           <h3 className="text-xl font-bold text-white">Get Ready!</h3>
         </div>
-        
+
         <motion.div
           key={Math.ceil(timeLeft)}
           initial={{ scale: 0.5, opacity: 0 }}
@@ -352,7 +349,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         >
           {Math.ceil(timeLeft)}
         </motion.div>
-        
+
         <div className="text-slate-400">
           Your prediction will be placed in...
         </div>
@@ -370,7 +367,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
           {isWinning === true && <Flame className="w-5 h-5 text-orange-400 animate-pulse" />}
           {isWinning === false && <Zap className="w-5 h-5 text-purple-400 animate-bounce" />}
         </div>
-        
+
         {prediction && (
           <div className="flex items-center justify-center space-x-2">
             <span className="text-slate-400">Prediction:</span>
@@ -396,19 +393,18 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
           animate={{ opacity: 1, y: 0 }}
           className={`
             p-4 bg-slate-800/30 rounded-xl border-2 transition-all duration-300
-            ${isWinning === true ? 'border-green-500/50 bg-green-500/5' : 
-              isWinning === false ? 'border-red-500/50 bg-red-500/5' : 
-              'border-slate-700'}
+            ${isWinning === true ? 'border-green-500/50 bg-green-500/5' :
+              isWinning === false ? 'border-red-500/50 bg-red-500/5' :
+                'border-slate-700'}
             ${chartColors.glow} shadow-lg
           `}
         >
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${
-                isWinning === true ? 'bg-green-400' : 
-                isWinning === false ? 'bg-red-400' : 
-                'bg-blue-400'
-              }`} />
+              <div className={`w-2 h-2 rounded-full animate-pulse ${isWinning === true ? 'bg-green-400' :
+                isWinning === false ? 'bg-red-400' :
+                  'bg-blue-400'
+                }`} />
               <span className="text-sm font-medium text-slate-300">
                 {prediction.asset.symbol} Live Price
               </span>
@@ -426,27 +422,27 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
             <AreaChart data={priceHistory} accessibilityLayer>
               <defs>
                 <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="redGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-5))" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="hsl(var(--chart-5))" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="hsl(var(--chart-5))" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(var(--chart-5))" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="blueGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-3))" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="hsl(var(--chart-3))" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="hsl(var(--chart-3))" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(var(--chart-3))" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              
-              <CartesianGrid 
-                strokeDasharray="3 3" 
-                stroke="#374151" 
+
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#374151"
                 strokeOpacity={0.3}
                 vertical={false}
               />
-              
-              <XAxis 
+
+              <XAxis
                 dataKey="elapsed"
                 axisLine={false}
                 tickLine={false}
@@ -454,8 +450,8 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 tickFormatter={(value) => `${value.toFixed(0)}s`}
                 tickMargin={10}
               />
-              
-              <YAxis 
+
+              <YAxis
                 domain={[(dataMin: number) => {
                   // Make Y-axis more sensitive for small price movements
                   const padding = Math.max((dataMin * 0.001), 0.1) // 0.1% padding or minimum $0.10
@@ -470,21 +466,21 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 tickFormatter={(value) => `${value.toFixed(2)}`}
                 width={80}
               />
-              
+
               {/* Entry Price Reference Line */}
-              <ReferenceLine 
-                y={prediction.entryPrice} 
-                stroke="hsl(var(--chart-4))" 
+              <ReferenceLine
+                y={prediction.entryPrice}
+                stroke="hsl(var(--chart-4))"
                 strokeDasharray="5 5"
                 strokeWidth={2}
-                label={{ 
-                  value: `Entry $${prediction.entryPrice.toFixed(2)}`, 
+                label={{
+                  value: `Entry $${prediction.entryPrice.toFixed(2)}`,
                   // position: "topRight",
                   fill: "hsl(var(--chart-4))",
                   fontSize: 12
                 }}
               />
-              
+
               {/* Price Area */}
               <Area
                 type="monotone"
@@ -492,27 +488,27 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 stroke={chartColors.stroke}
                 strokeWidth={3}
                 fill={chartColors.fill}
-                dot={{ 
-                  r: 2, 
+                dot={{
+                  r: 2,
                   fill: chartColors.stroke,
                   className: 'drop-shadow-lg'
                 }}
-                activeDot={{ 
-                  r: 4, 
+                activeDot={{
+                  r: 4,
                   fill: chartColors.stroke,
                   stroke: '#fff',
                   strokeWidth: 2,
                   className: 'drop-shadow-lg'
                 }}
               />
-              
-              <ChartTooltip 
+
+              <ChartTooltip
                 content={
-                  <ChartTooltipContent 
+                  <ChartTooltipContent
                     labelFormatter={(value) => `Time: ${value}s`}
                     formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Price']}
                   />
-                } 
+                }
               />
             </AreaChart>
           </ChartContainer>
@@ -529,13 +525,13 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 (Last: {lastPriceRef.current?.toFixed(2) || 'none'})
               </span>
             </div>
-            
+
             {pnlDisplay && (
               <div className={`
                 flex items-center space-x-1 px-3 py-1 rounded-full text-sm font-bold
-                ${pnlDisplay.isWinning ? 'bg-green-500/20 text-green-400' : 
-                  pnlDisplay.isLosing ? 'bg-red-500/20 text-red-400' : 
-                  'bg-slate-500/20 text-slate-400'}
+                ${pnlDisplay.isWinning ? 'bg-green-500/20 text-green-400' :
+                  pnlDisplay.isLosing ? 'bg-red-500/20 text-red-400' :
+                    'bg-slate-500/20 text-slate-400'}
               `}>
                 {pnlDisplay.isWinning ? '📈' : pnlDisplay.isLosing ? '📉' : '➡️'}
                 <span>
@@ -560,9 +556,9 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         >
           {timeLeft.toFixed(1)}s
         </motion.div>
-        
-        <Progress 
-          value={progressPercent} 
+
+        <Progress
+          value={progressPercent}
           className={`
             h-3 mb-4
             ${isLastSeconds ? 'bg-red-900' : 'bg-slate-700'}
@@ -578,9 +574,9 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
           animate={{ scale: 1 }}
           className={`
             text-center p-6 rounded-xl border-2 transition-all duration-300
-            ${pnlDisplay.isWinning ? 'border-green-500/50 bg-green-500/10' : 
-              pnlDisplay.isLosing ? 'border-red-500/50 bg-red-500/10' : 
-              'border-slate-700 bg-slate-800/30'}
+            ${pnlDisplay.isWinning ? 'border-green-500/50 bg-green-500/10' :
+              pnlDisplay.isLosing ? 'border-red-500/50 bg-red-500/10' :
+                'border-slate-700 bg-slate-800/30'}
           `}
         >
           <div className="flex items-center justify-center space-x-2 mb-2">
@@ -598,7 +594,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
               )}
             </div>
           </div>
-          
+
           {/* Percentage P&L */}
           <div className={`
             text-4xl font-bold font-mono mb-2
@@ -616,9 +612,9 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
               {pnlDisplay.isWinning ? '+' : pnlDisplay.isLosing ? '-' : ''}${pnlDisplay.dollarValue.toFixed(2)}
             </div>
           )}
-          
+
           {/* Status with animated emoji */}
-          <motion.div 
+          <motion.div
             animate={{ scale: [1, 1.1, 1] }}
             transition={{ duration: 1, repeat: Infinity }}
             className={`
@@ -647,7 +643,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
               Calculated from price movement
             </div>
           )}
-          
+
           {realTimePnL.error && (
             <div className="text-xs text-red-400 mt-2">
               P&L data unavailable
@@ -661,13 +657,13 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         {isLastSeconds && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ 
-              opacity: 1, 
+            animate={{
+              opacity: 1,
               scale: [1, 1.05, 1],
               boxShadow: ['0 0 0 0 rgba(239, 68, 68, 0.7)', '0 0 0 20px rgba(239, 68, 68, 0)', '0 0 0 0 rgba(239, 68, 68, 0)']
             }}
             exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ 
+            transition={{
               scale: { duration: 0.6, repeat: Infinity },
               boxShadow: { duration: 1.5, repeat: Infinity }
             }}

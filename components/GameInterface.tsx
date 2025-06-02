@@ -38,7 +38,6 @@ export function GameInterface({
   setCurrentPrediction,
   gameStats,
   setGameStats,
-  soundEnabled
 }: GameInterfaceProps) {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [timeWindow, setTimeWindow] = useState<number>(30)
@@ -48,7 +47,7 @@ export function GameInterface({
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [needsDeposit, setNeedsDeposit] = useState(false)
-  
+
   // ✅ Game completion modal state
   const [showCompletionModal, setShowCompletionModal] = useState(false)
   const [completionData, setCompletionData] = useState<{
@@ -61,11 +60,11 @@ export function GameInterface({
   // ✅ Success feedback state
   const [showSuccessFeedback, setShowSuccessFeedback] = useState(false)
 
-  const { 
-    assets, 
-    isLoading, 
-    error, 
-    isConnected: hlConnected, 
+  const {
+    assets,
+    isLoading,
+    error,
+    isConnected: hlConnected,
     lastUpdate,
     isWalletConnected,
     address,
@@ -79,9 +78,10 @@ export function GameInterface({
   const activePositions = getActivePositions()
 
   const canPlaceOrder = Boolean(
-    isWalletConnected && 
+    isWalletConnected &&
     address &&
-    !isPlacingOrder && 
+    walletReady &&
+    !isPlacingOrder &&
     activePositions.length === 0 &&
     !orderError &&
     hlConnected
@@ -122,7 +122,7 @@ export function GameInterface({
       setOrderError(null)
       setGameState('countdown')
       setCountdownTime(3)
-      
+
       setTimeout(async () => {
         try {
           const currentPrice = getCurrentPrice(selectedAsset.id)
@@ -159,15 +159,15 @@ export function GameInterface({
                 timeWindow,
                 timestamp: Date.now()
               }
-              
+
               setCurrentPrediction(prediction)
               setGameState('active')
               setOrderError(null)
-              
+
               // ✅ Show success feedback
               setShowSuccessFeedback(true)
               setTimeout(() => setShowSuccessFeedback(false), 3000)
-              
+
               console.log('✅ Order filled immediately with leverage:', {
                 orderId: response.orderId,
                 cloid: response.cloid,
@@ -177,14 +177,14 @@ export function GameInterface({
                 estimatedPositionValue: positionCalc?.usdValue,
                 timeWindow: timeWindow
               })
-              
+
               if (response.cloid) {
                 onPositionResult(response.cloid, (result, exitPrice) => {
                   console.log(`🎯 Position result: ${result.toUpperCase()} - Entry: $${prediction.entryPrice} → Exit: $${exitPrice}`)
                   handleGameComplete(result, exitPrice, positionCalc?.usdValue || 400)
                 })
               }
-              
+
             } else {
               // Handle resting order
               const prediction: Prediction = {
@@ -195,11 +195,11 @@ export function GameInterface({
                 timeWindow,
                 timestamp: Date.now()
               }
-              
+
               setCurrentPrediction(prediction)
               setGameState('active')
               setOrderError(null)
-              
+
               if (response.cloid) {
                 onPositionResult(response.cloid, (result, exitPrice) => {
                   handleGameComplete(result, exitPrice, positionCalc?.usdValue || 400)
@@ -209,7 +209,7 @@ export function GameInterface({
           } else {
             // Handle order failure
             const errorMessage = response.error || 'Order failed'
-            
+
             if (errorMessage === 'NEEDS_HYPERLIQUID_DEPOSIT') {
               setNeedsDeposit(true)
               setOrderError(null)
@@ -219,10 +219,11 @@ export function GameInterface({
             } else {
               setOrderError(errorMessage)
             }
-            
+
             setGameState('idle')
             console.error('❌ Order placement failed:', errorMessage)
           }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
           const errorMessage = error.message || 'Failed to place order'
           setOrderError(errorMessage)
@@ -232,7 +233,7 @@ export function GameInterface({
           setIsPlacingOrder(false)
         }
       }, 3000)
-      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       const errorMessage = error.message || 'Failed to initiate order'
       setOrderError(errorMessage)
@@ -266,7 +267,7 @@ export function GameInterface({
     // Update stats
     const newStats = { ...gameStats }
     newStats.totalGames++
-    
+
     if (result === 'win') {
       newStats.wins++
       newStats.currentStreak++
@@ -275,7 +276,7 @@ export function GameInterface({
       newStats.losses++
       newStats.currentStreak = 0
     }
-    
+
     newStats.winRate = (newStats.wins / newStats.totalGames) * 100
     setGameStats(newStats)
 
@@ -289,7 +290,7 @@ export function GameInterface({
   const handleModalClose = () => {
     setShowCompletionModal(false)
     setGameState('result') // Show regular result display
-    
+
     // Auto-reset after showing result briefly
     setTimeout(() => {
       setGameState('idle')
@@ -345,7 +346,7 @@ export function GameInterface({
             <div className="text-sm">Failed to connect to Hyperliquid: {error}</div>
           </AlertDescription>
         </Alert>
-        
+
         <Card className="p-8 bg-slate-900/50 border-slate-800">
           <div className="text-center space-y-4">
             <div className="text-slate-400">
@@ -450,7 +451,7 @@ export function GameInterface({
               </>
             )}
           </div>
-          
+
           <div className="flex items-center space-x-4">
             {isWalletConnected && selectedAsset && (
               <>
@@ -483,9 +484,9 @@ export function GameInterface({
           <AlertDescription className="text-red-400">
             <div className="font-semibold mb-1">Order Failed</div>
             <div className="text-sm">{orderError}</div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="mt-2 text-red-400 border-red-400 hover:bg-red-400/10"
               onClick={() => setOrderError(null)}
             >
@@ -497,9 +498,9 @@ export function GameInterface({
 
       {/* Deposit Required Alert */}
       {needsDeposit && address && (
-        <DepositRequiredAlert 
-          userAddress={address} 
-          onDismiss={() => setNeedsDeposit(false)} 
+        <DepositRequiredAlert
+          userAddress={address}
+          onDismiss={() => setNeedsDeposit(false)}
         />
       )}
 
@@ -510,7 +511,7 @@ export function GameInterface({
           <AlertDescription className="text-blue-400">
             <div className="font-semibold mb-1">Active Position</div>
             <div className="text-sm">
-              You have {activePositions.length} active position(s). 
+              You have {activePositions.length} active position(s).
               Wait for it to close before placing a new prediction.
             </div>
             <div className="mt-2 space-y-1">
@@ -527,7 +528,7 @@ export function GameInterface({
       {/* Price Display */}
       {selectedAsset && isWalletConnected && (
         <Card className="p-6 bg-slate-900/50 border-slate-800">
-          <PriceDisplay 
+          <PriceDisplay
             asset={selectedAsset}
             gameState={gameState}
             prediction={currentPrediction}
@@ -537,28 +538,28 @@ export function GameInterface({
 
       {/* Game Controls */}
       {isWalletConnected && (gameState === 'idle' || gameState === 'countdown') && (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <Card className="p-6 bg-slate-900/50 border-slate-800">
-      <AssetSelector
-        assets={assets}
-        selectedAsset={selectedAsset}
-        onAssetSelect={setSelectedAsset}
-        disabled={gameState !== 'idle' || !canPlaceOrder}
-      />
-    </Card>
-    
-    <Card className="p-6 bg-slate-900/50 border-slate-800">
-      <CombinedSettingsSelector
-        timeWindow={timeWindow}
-        onTimeWindowSelect={setTimeWindow}
-        leverage={selectedLeverage}
-        onLeverageChange={setSelectedLeverage}
-        disabled={gameState !== 'idle' || !canPlaceOrder}
-        selectedAsset={selectedAsset}
-      />
-    </Card>
-  </div>
-)}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="p-6 bg-slate-900/50 border-slate-800">
+            <AssetSelector
+              assets={assets}
+              selectedAsset={selectedAsset}
+              onAssetSelect={setSelectedAsset}
+              disabled={gameState !== 'idle' || !canPlaceOrder}
+            />
+          </Card>
+
+          <Card className="p-6 bg-slate-900/50 border-slate-800">
+            <CombinedSettingsSelector
+              timeWindow={timeWindow}
+              onTimeWindowSelect={setTimeWindow}
+              leverage={selectedLeverage}
+              onLeverageChange={setSelectedLeverage}
+              disabled={gameState !== 'idle' || !canPlaceOrder}
+              selectedAsset={selectedAsset}
+            />
+          </Card>
+        </div>
+      )}
 
       {/* Prediction Buttons or Game Status */}
       {isWalletConnected && (
@@ -569,7 +570,7 @@ export function GameInterface({
               disabled={!selectedAsset || !hlConnected || !canPlaceOrder || isPlacingOrder}
             />
           )}
-          
+
           {gameState === 'countdown' && (
             <div className="text-center space-y-4">
               <div className="text-2xl font-bold text-white">
@@ -577,7 +578,7 @@ export function GameInterface({
               </div>
               <GameTimer
                 initialTime={countdownTime}
-                onComplete={() => {}}
+                onComplete={() => { }}
                 type="countdown"
               />
               <div className="text-sm text-slate-400 space-y-1">
@@ -591,33 +592,33 @@ export function GameInterface({
               </div>
             </div>
           )}
-          
-        {/* Only show timer if game is active AND modal is NOT showing */}
-        {gameState === 'active' && currentPrediction && selectedAsset && !showCompletionModal && (
-          <GameTimer
-            initialTime={timeWindow}
-            onComplete={() => {
-              // Force completion if timer expires
-              if (selectedAsset) {
-                handleGameComplete('loss', selectedAsset.price, 400)
-              }
-            }}
-            type="game"
-            prediction={currentPrediction}
-            currentPrice={selectedAsset.price}
-          />
-        )}
 
-        {/* Show completion message when transitioning */}
-        {gameState === 'result' && !showCompletionModal && (
-          <div className="text-center space-y-4">
-            <div className="text-2xl font-bold text-white">Game Complete!</div>
-            <div className="animate-pulse">
-              <div className="w-8 h-8 bg-blue-500 rounded-full mx-auto"></div>
+          {/* Only show timer if game is active AND modal is NOT showing */}
+          {gameState === 'active' && currentPrediction && selectedAsset && !showCompletionModal && (
+            <GameTimer
+              initialTime={timeWindow}
+              onComplete={() => {
+                // Force completion if timer expires
+                if (selectedAsset) {
+                  handleGameComplete('loss', selectedAsset.price, 400)
+                }
+              }}
+              type="game"
+              prediction={currentPrediction}
+              currentPrice={selectedAsset.price}
+            />
+          )}
+
+          {/* Show completion message when transitioning */}
+          {gameState === 'result' && !showCompletionModal && (
+            <div className="text-center space-y-4">
+              <div className="text-2xl font-bold text-white">Game Complete!</div>
+              <div className="animate-pulse">
+                <div className="w-8 h-8 bg-blue-500 rounded-full mx-auto"></div>
+              </div>
             </div>
-          </div>
-        )}
-          
+          )}
+
           {gameState === 'result' && currentPrediction && !showCompletionModal && (
             <ResultDisplay
               prediction={currentPrediction}
@@ -654,9 +655,9 @@ export function GameInterface({
       <div className="text-center text-xs text-slate-500 space-y-1">
         <div>
           Real-time data and trading via{' '}
-          <a 
-            href="https://hyperliquid.xyz" 
-            target="_blank" 
+          <a
+            href="https://hyperliquid.xyz"
+            target="_blank"
             rel="noopener noreferrer"
             className="text-blue-400 hover:text-blue-300 underline transition-colors"
           >

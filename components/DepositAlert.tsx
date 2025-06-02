@@ -35,7 +35,7 @@ export function DepositRequiredAlert({ userAddress, onDismiss }: DepositRequired
           <div>
             <div className="font-semibold mb-2">Deposit Required</div>
             <div className="text-sm">
-              You need to deposit funds to YOUR wallet address on Hyperliquid Testnet 
+              You need to deposit funds to YOUR wallet address on Hyperliquid Testnet
               before you can approve the trading agent. This is a one-time requirement.
             </div>
           </div>
@@ -62,16 +62,16 @@ export function DepositRequiredAlert({ userAddress, onDismiss }: DepositRequired
 
           <div className="space-y-3">
             <div className="text-sm font-medium">Setup Steps:</div>
-            
+
             <div className="space-y-2 ml-2">
               <div className="flex items-center justify-between bg-yellow-500/20 p-3 rounded">
                 <div>
                   <div className="font-medium text-xs">Step 1: Get Testnet ETH</div>
                   <div className="text-xs opacity-75">Free testnet ETH from Arbitrum faucet</div>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={handleGetTestnetEth}
                   className="text-yellow-400 border-yellow-400 hover:bg-yellow-400/10"
                 >
@@ -85,9 +85,9 @@ export function DepositRequiredAlert({ userAddress, onDismiss }: DepositRequired
                   <div className="font-medium text-xs">Step 2: Deposit to Hyperliquid</div>
                   <div className="text-xs opacity-75">Use YOUR wallet address above (any amount)</div>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={handleOpenHyperliquid}
                   className="text-yellow-400 border-yellow-400 hover:bg-yellow-400/10"
                 >
@@ -98,16 +98,16 @@ export function DepositRequiredAlert({ userAddress, onDismiss }: DepositRequired
             </div>
 
             <div className="text-xs opacity-75 border-t border-yellow-500/30 pt-3">
-              💡 <strong>Key Point:</strong> The deposit must be to YOUR wallet address shown above, 
-              not the agent wallet. The agent is just for signing orders - your main wallet 
+              💡 <strong>Key Point:</strong> The deposit must be to YOUR wallet address shown above,
+              not the agent wallet. The agent is just for signing orders - your main wallet
               is your trading account.
             </div>
           </div>
 
           <div className="flex justify-end">
-            <Button 
-              size="sm" 
-              variant="ghost" 
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={onDismiss}
               className="text-yellow-400 hover:bg-yellow-400/10"
             >

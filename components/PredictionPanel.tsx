@@ -38,7 +38,7 @@ const PredictionPanel: React.FC<PredictionPanelProps> = ({
             <Clock className="w-5 h-5 text-neon-blue" />
             <span className="text-neon-blue matrix-text font-semibold">TIME WINDOW</span>
           </div>
-          
+
           <div className="grid grid-cols-3 gap-2">
             {timeOptions.map((time) => (
               <button
@@ -47,10 +47,10 @@ const PredictionPanel: React.FC<PredictionPanelProps> = ({
                 disabled={disabled}
                 className={`p-3 rounded-lg border-2 transition-all duration-300 orbitron-text font-semibold
                            disabled:opacity-50 disabled:cursor-not-allowed
-                           ${selectedTimeframe === time 
-                             ? 'border-neon-blue bg-neon-blue/20 text-neon-blue shadow-lg shadow-neon-blue/30' 
-                             : 'border-neon-blue/30 bg-black/40 text-neon-blue/70 hover:border-neon-blue/60 hover:bg-black/60'
-                           }`}
+                           ${selectedTimeframe === time
+                    ? 'border-neon-blue bg-neon-blue/20 text-neon-blue shadow-lg shadow-neon-blue/30'
+                    : 'border-neon-blue/30 bg-black/40 text-neon-blue/70 hover:border-neon-blue/60 hover:bg-black/60'
+                  }`}
               >
                 {time}s
               </button>

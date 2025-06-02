@@ -14,7 +14,7 @@ interface PriceDisplayProps {
 export function PriceDisplay({ asset, gameState, prediction }: PriceDisplayProps) {
   const [prevPrice, setPrevPrice] = useState(asset.price)
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'neutral'>('neutral')
-  
+
   useEffect(() => {
     if (asset.price > prevPrice) {
       setPriceDirection('up')
@@ -44,15 +44,15 @@ export function PriceDisplay({ asset, gameState, prediction }: PriceDisplayProps
 
   const getPnL = () => {
     if (!prediction) return null
-    
+
     const priceDiff = asset.price - prediction.entryPrice
     const percentage = (priceDiff / prediction.entryPrice) * 100
-    
+
     // Determine if user is winning based on their prediction
-    const isWinning = 
+    const isWinning =
       (prediction.direction === 'up' && priceDiff > 0) ||
       (prediction.direction === 'down' && priceDiff < 0)
-    
+
     return {
       value: Math.abs(percentage),
       isWinning,
@@ -65,19 +65,19 @@ export function PriceDisplay({ asset, gameState, prediction }: PriceDisplayProps
   // Format price based on value (more decimals for smaller prices)
   const formatPrice = (price: number): string => {
     if (price >= 1000) {
-      return price.toLocaleString(undefined, { 
-        minimumFractionDigits: 2, 
-        maximumFractionDigits: 2 
+      return price.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       })
     } else if (price >= 1) {
-      return price.toLocaleString(undefined, { 
-        minimumFractionDigits: 2, 
-        maximumFractionDigits: 4 
+      return price.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4
       })
     } else {
-      return price.toLocaleString(undefined, { 
-        minimumFractionDigits: 4, 
-        maximumFractionDigits: 6 
+      return price.toLocaleString(undefined, {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 6
       })
     }
   }
@@ -95,14 +95,14 @@ export function PriceDisplay({ asset, gameState, prediction }: PriceDisplayProps
             <p className="text-slate-400">{asset.name}</p>
           </div>
         </div>
-        
+
         {prediction && gameState === 'active' && (
-          <Badge 
-            variant="outline" 
+          <Badge
+            variant="outline"
             className={`
               text-lg px-3 py-1
-              ${prediction.direction === 'up' 
-                ? 'text-green-400 border-green-400' 
+              ${prediction.direction === 'up'
+                ? 'text-green-400 border-green-400'
                 : 'text-red-400 border-red-400'
               }
             `}
@@ -127,7 +127,7 @@ export function PriceDisplay({ asset, gameState, prediction }: PriceDisplayProps
         >
           ${formatPrice(asset.price)}
         </motion.div>
-        
+
         <div className="flex items-center justify-center space-x-2">
           {priceDirection === 'up' && <TrendingUp className="w-5 h-5 text-green-400" />}
           {priceDirection === 'down' && <TrendingDown className="w-5 h-5 text-red-400" />}
@@ -147,7 +147,7 @@ export function PriceDisplay({ asset, gameState, prediction }: PriceDisplayProps
               ${formatPrice(prediction.entryPrice)}
             </div>
           </div>
-          
+
           <div className="text-center">
             <div className="text-slate-400 text-sm">Current P&L</div>
             {pnl && (
@@ -155,9 +155,8 @@ export function PriceDisplay({ asset, gameState, prediction }: PriceDisplayProps
                 key={`${pnl.isWinning}-${pnl.value}`}
                 initial={{ scale: 1.1 }}
                 animate={{ scale: 1 }}
-                className={`font-mono font-bold ${
-                  pnl.isWinning ? 'text-green-400' : pnl.isLosing ? 'text-red-400' : 'text-white'
-                }`}
+                className={`font-mono font-bold ${pnl.isWinning ? 'text-green-400' : pnl.isLosing ? 'text-red-400' : 'text-white'
+                  }`}
               >
                 {pnl.isWinning ? '+' : pnl.isLosing ? '-' : ''}{pnl.value.toFixed(2)}%
               </motion.div>

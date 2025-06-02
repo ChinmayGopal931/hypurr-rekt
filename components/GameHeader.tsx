@@ -38,17 +38,17 @@ export function Header({ gameStats, soundEnabled, setSoundEnabled }: HeaderProps
                 {gameStats.losses}
               </Badge>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <span className="text-slate-400 text-sm">Streak:</span>
-              <Badge 
+              <Badge
                 variant={gameStats.currentStreak > 0 ? "default" : "secondary"}
                 className={gameStats.currentStreak > 0 ? "bg-green-500" : ""}
               >
                 {gameStats.currentStreak}
               </Badge>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <span className="text-slate-400 text-sm">Win Rate:</span>
               <Badge variant="outline" className="text-blue-400 border-blue-400">
