@@ -53,7 +53,7 @@ export function ResultDisplay({ prediction, onPlayAgain }: ResultDisplayProps) {
         >
           {config.icon}
         </motion.div>
-        
+
         <div>
           <h2 className="text-3xl font-bold text-white mb-2">{config.title}</h2>
           <p className="text-slate-400">{config.subtitle}</p>
@@ -70,12 +70,12 @@ export function ResultDisplay({ prediction, onPlayAgain }: ResultDisplayProps) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <div className="text-slate-400 text-sm">Your Prediction</div>
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className={`
                 text-lg px-3 py-1 mt-1
-                ${prediction.direction === 'up' 
-                  ? 'text-green-400 border-green-400' 
+                ${prediction.direction === 'up'
+                  ? 'text-green-400 border-green-400'
                   : 'text-red-400 border-red-400'
                 }
               `}
@@ -87,7 +87,7 @@ export function ResultDisplay({ prediction, onPlayAgain }: ResultDisplayProps) {
               )}
             </Badge>
           </div>
-          
+
           <div>
             <div className="text-slate-400 text-sm">Asset</div>
             <div className="text-white font-bold">{prediction.asset.symbol}</div>
@@ -101,7 +101,7 @@ export function ResultDisplay({ prediction, onPlayAgain }: ResultDisplayProps) {
               ${prediction.entryPrice.toFixed(2)}
             </div>
           </div>
-          
+
           <div>
             <div className="text-slate-400 text-sm">Exit Price</div>
             <div className="text-white font-mono">

@@ -26,7 +26,7 @@ export function AssetSelector({ assets, selectedAsset, onAssetSelect, disabled }
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-white">Select Asset</h3>
-      
+
       <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
         {assets.map((asset) => (
           <Button
@@ -34,8 +34,8 @@ export function AssetSelector({ assets, selectedAsset, onAssetSelect, disabled }
             variant={selectedAsset?.id === asset.id ? "default" : "outline"}
             className={`
               h-auto p-4 justify-between hover:scale-[1.02] transition-all duration-200
-              ${selectedAsset?.id === asset.id 
-                ? 'bg-blue-600 hover:bg-blue-700 border-blue-500' 
+              ${selectedAsset?.id === asset.id
+                ? 'bg-blue-600 hover:bg-blue-700 border-blue-500'
                 : 'bg-slate-800/50 hover:bg-slate-700/50 border-slate-700'
               }
             `}
@@ -48,19 +48,19 @@ export function AssetSelector({ assets, selectedAsset, onAssetSelect, disabled }
                 <div className="text-sm text-slate-300">{asset.name}</div>
               </div>
             </div>
-            
+
             <div className="text-right">
               <div className="font-mono text-white">
-                ${asset.price.toLocaleString(undefined, { 
-                  minimumFractionDigits: 2, 
+                ${asset.price.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
                   maximumFractionDigits: asset.price > 1000 ? 2 : 4
                 })}
               </div>
-              <Badge 
+              <Badge
                 variant="outline"
                 className={`
-                  ${asset.change24h >= 0 
-                    ? 'text-green-400 border-green-400' 
+                  ${asset.change24h >= 0
+                    ? 'text-green-400 border-green-400'
                     : 'text-red-400 border-red-400'
                   }
                 `}
@@ -76,7 +76,7 @@ export function AssetSelector({ assets, selectedAsset, onAssetSelect, disabled }
           </Button>
         ))}
       </div>
-      
+
       <div className="text-xs text-slate-400 text-center">
         {assets.length} assets available • Real-time prices
       </div>
