@@ -1,24 +1,31 @@
-// src/components/WalletConnection.tsx
-import React from 'react'
+// Updated WalletConnection.tsx with typed hooks and best practices
+import React, { JSX, useCallback, useMemo } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useBalance } from 'wagmi'
 import { Card } from './ui/card'
 import { Badge } from './ui/badge'
 import { Alert, AlertDescription } from './ui/alert'
-import { Wallet, AlertTriangle, ExternalLink, Activity } from 'lucide-react'
-import { useHyperliquid } from '@/hooks/useHyperliquid'
+import { Wallet, AlertTriangle, ExternalLink, Activity, Loader2, CheckCircle } from 'lucide-react'
+import { usePositions } from '@/hooks/useHyperliquid'
+import type { PositionInfo } from '@/service/hyperliquidOrders'
 
 interface WalletConnectionProps {
   onWalletReady?: () => void
 }
 
-export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
-  const { address, isConnected, chain } = useAccount()
-  const { data: balance } = useBalance({ address })
+interface FormattedPosition {
+  asset: string
+  direction: string
+  displayText: string
+}
 
-  // Use consolidated Hyperliquid hook for position data
-  const { getActivePositions } = useHyperliquid()
-  const activePositions = getActivePositions()
+export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.Element {
+  const { address, isConnected, chain } = useAccount()
+  const { data: balance, isLoading: isBalanceLoading } = useBalance({ address })
+
+  // Use typed positions hook for better performance
+  const positionsQuery = usePositions(address)
+  const activePositions = positionsQuery.data || []
 
   // Notify parent when wallet is ready
   React.useEffect(() => {
@@ -27,13 +34,42 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
     }
   }, [isConnected, onWalletReady])
 
-  // Format address for display
-  const formatAddress = (address: string): string => {
+  // Memoized helper functions for better performance
+  const formatAddress = useCallback((address: string): string => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`
-  }
+  }, [])
 
   // Check if we're on the correct network (Arbitrum Sepolia for testnet)
-  const isCorrectNetwork = chain?.id === 421614 // Arbitrum Sepolia testnet
+  const isCorrectNetwork = useMemo(() => chain?.id === 421614, [chain?.id])
+
+  // Format positions for display
+  const formattedPositions = useMemo((): FormattedPosition[] => {
+    return activePositions.map((position: PositionInfo) => ({
+      asset: position.asset,
+      direction: position.direction.toUpperCase(),
+      displayText: `${position.asset} ${position.direction.toUpperCase()}`
+    }))
+  }, [activePositions])
+
+  // Memoized balance display
+  const balanceDisplay = useMemo(() => {
+    if (isBalanceLoading) return 'Loading...'
+    if (!balance) return 'Unable to load'
+    return `${parseFloat(balance.formatted).toFixed(4)} ${balance.symbol}`
+  }, [balance, isBalanceLoading])
+
+  // Network status
+  const networkStatus = useMemo(() => {
+    if (!chain) return { name: 'Unknown', isCorrect: false }
+    return { name: chain.name, isCorrect: isCorrectNetwork }
+  }, [chain, isCorrectNetwork])
+
+  // Position summary text
+  const positionSummary = useMemo(() => {
+    if (activePositions.length === 0) return null
+    if (activePositions.length === 1) return '1 active position'
+    return `${activePositions.length} active positions`
+  }, [activePositions.length])
 
   // If wallet is connected, show status
   if (isConnected && address) {
@@ -47,42 +83,72 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
             <div>
               <div className="flex items-center space-x-2 mb-1">
                 <Badge variant="outline" className="text-green-400 border-green-400">
+                  <CheckCircle className="w-3 h-3 mr-1" />
                   Connected
                 </Badge>
                 <span className="text-white font-mono text-sm">
                   {formatAddress(address)}
                 </span>
-                {!isCorrectNetwork && (
+                {!networkStatus.isCorrect && (
                   <Badge variant="outline" className="text-red-400 border-red-400">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
                     Wrong Network
                   </Badge>
                 )}
               </div>
+
               <div className="text-xs text-slate-400 space-y-0.5">
-                <div>
-                  Balance: {balance ? `${parseFloat(balance.formatted).toFixed(4)} ${balance.symbol}` : 'Loading...'}
-                  {chain && ` • ${chain.name}`}
+                {/* Balance and Network Info */}
+                <div className="flex items-center space-x-2">
+                  <span>Balance:</span>
+                  {isBalanceLoading ? (
+                    <div className="flex items-center space-x-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Loading...</span>
+                    </div>
+                  ) : (
+                    <span className="font-mono">{balanceDisplay}</span>
+                  )}
+                  {networkStatus.name && (
+                    <>
+                      <span className="text-slate-500">•</span>
+                      <span>{networkStatus.name}</span>
+                    </>
+                  )}
                 </div>
-                {activePositions.length > 0 && (
+
+                {/* Positions Info */}
+                {positionsQuery.isLoading ? (
+                  <div className="flex items-center space-x-1">
+                    <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                    <span className="text-blue-400">Loading positions...</span>
+                  </div>
+                ) : positionsQuery.error ? (
+                  <div className="flex items-center space-x-1">
+                    <AlertTriangle className="w-3 h-3 text-red-400" />
+                    <span className="text-red-400">Position data unavailable</span>
+                  </div>
+                ) : activePositions.length > 0 ? (
                   <div className="flex items-center space-x-1">
                     <Activity className="w-3 h-3 text-blue-400" />
-                    <span className="text-blue-400">
-                      {activePositions.length} active position{activePositions.length > 1 ? 's' : ''}
-                    </span>
+                    <span className="text-blue-400">{positionSummary}</span>
                     <span className="text-slate-500">•</span>
-                    <span>
-                      {activePositions.map(p => `${p.asset} ${p.direction.toUpperCase()}`).join(', ')}
+                    <span className="max-w-48 truncate">
+                      {formattedPositions.map(p => p.displayText).join(', ')}
                     </span>
                   </div>
+                ) : (
+                  <div className="text-slate-500">No active positions</div>
                 )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
-            {chain && (
+            {/* Explorer Link */}
+            {chain?.blockExplorers?.default && (
               <a
-                href={`${chain.blockExplorers?.default.url}/address/${address}`}
+                href={`${chain.blockExplorers.default.url}/address/${address}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-slate-400 hover:text-white transition-colors"
@@ -91,6 +157,8 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
                 <ExternalLink className="w-4 h-4" />
               </a>
             )}
+
+            {/* Connect Button */}
             <ConnectButton
               showBalance={false}
               chainStatus="none"
@@ -100,13 +168,31 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
         </div>
 
         {/* Network warning */}
-        {!isCorrectNetwork && (
+        {!networkStatus.isCorrect && (
           <Alert className="border-yellow-500/50 bg-yellow-500/10 mt-3">
             <AlertTriangle className="h-4 w-4 text-yellow-400" />
             <AlertDescription className="text-yellow-400">
-              <div className="font-semibold mb-1">Wrong Network</div>
+              <div className="font-semibold mb-1">Wrong Network Detected</div>
               <div className="text-sm">
-                Please switch to Arbitrum Sepolia testnet for Hyperliquid trading.
+                Please switch to Arbitrum Sepolia testnet (Chain ID: 421614) for Hyperliquid trading.
+                {networkStatus.name && (
+                  <span className="block mt-1">
+                    Currently connected to: {networkStatus.name} (Chain ID: {chain?.id})
+                  </span>
+                )}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Positions Error */}
+        {positionsQuery.error && (
+          <Alert className="border-red-500/50 bg-red-500/10 mt-3">
+            <AlertTriangle className="h-4 w-4 text-red-400" />
+            <AlertDescription className="text-red-400">
+              <div className="font-semibold mb-1">Position Data Error</div>
+              <div className="text-sm">
+                Unable to load position data. This may affect order placement.
               </div>
             </AlertDescription>
           </Alert>
@@ -142,13 +228,13 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
             }) => {
               // Note: If your app doesn't use authentication, you
               // can remove all 'authenticationStatus' checks
-              const ready = mounted && authenticationStatus !== 'loading';
+              const ready = mounted && authenticationStatus !== 'loading'
               const connected =
                 ready &&
                 account &&
                 chain &&
                 (!authenticationStatus ||
-                  authenticationStatus === 'authenticated');
+                  authenticationStatus === 'authenticated')
 
               return (
                 <div
@@ -167,11 +253,12 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
                         <button
                           onClick={openConnectModal}
                           className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-400 hover:to-purple-500 text-white rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                          type="button"
                         >
                           <Wallet className="w-5 h-5" />
                           <span>Connect Wallet</span>
                         </button>
-                      );
+                      )
                     }
 
                     if (chain.unsupported) {
@@ -179,17 +266,18 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
                         <button
                           onClick={openChainModal}
                           className="w-full h-12 text-lg font-semibold bg-red-500 hover:bg-red-400 text-white rounded-lg transition-all duration-200 flex items-center justify-center space-x-2"
+                          type="button"
                         >
                           <AlertTriangle className="w-5 h-5" />
                           <span>Wrong Network</span>
                         </button>
-                      );
+                      )
                     }
 
-                    return null;
+                    return null
                   })()}
                 </div>
-              );
+              )
             }}
           </ConnectButton.Custom>
 
@@ -239,7 +327,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps) {
             <div className="space-y-2">
               <div className="font-semibold">Testnet Trading</div>
               <div className="text-sm">
-                This app uses Hyperliquid testnet. You'll need testnet ETH on Arbitrum Sepolia.
+                This app uses Hyperliquid testnet. You&apos;ll need testnet ETH on Arbitrum Sepolia.
               </div>
               <a
                 href="https://faucet.arbitrum.io/"

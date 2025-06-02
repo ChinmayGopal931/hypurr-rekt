@@ -1,12 +1,13 @@
-// Updated GameTimer.tsx with shadcn charts and proper icons
+// Updated GameTimer.tsx with typed hooks and proper error handling
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Progress } from './ui/progress'
-import { Clock, Target, TrendingUp, TrendingDown, DollarSign, Loader2, Zap, Flame, Trophy } from 'lucide-react'
+import { Clock, Target, TrendingUp, TrendingDown, DollarSign, Loader2, Zap, Flame, Trophy, AlertCircle } from 'lucide-react'
 import { Prediction } from '@/app/page'
-import { useHyperliquid } from '@/hooks/useHyperliquid'
-import { Area, AreaChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts'
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
+import { useHyperliquid, useRealTimePnL, useAssetPnL } from '@/hooks/useHyperliquid'
+import { Area, AreaChart, CartesianGrid, DefaultTooltipContent, ReferenceLine, XAxis, YAxis } from 'recharts'
+import { ChartContainer, ChartTooltip, type ChartConfig } from '@/components/ui/chart'
+import type { RealTimePnLData } from '@/service/hyperliquidOrders'
 
 interface GameTimerProps {
   initialTime: number
@@ -32,6 +33,21 @@ interface PriceDataPoint {
   timestamp: string
 }
 
+interface PnLDisplayData {
+  value: number
+  dollarValue: number | null
+  isWinning: boolean
+  isLosing: boolean
+  isReal: boolean
+  isLoading: boolean
+}
+
+interface FallbackPnLData {
+  value: number
+  isWinning: boolean
+  isLosing: boolean
+}
+
 export function GameTimer({ initialTime, onComplete, type, prediction, currentPrice }: GameTimerProps) {
   const [timeLeft, setTimeLeft] = useState(initialTime)
   const [isActive, setIsActive] = useState(true)
@@ -49,6 +65,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
   const [isWinning, setIsWinning] = useState<boolean | null>(null)
   const gameStartTime = useRef<number>(Date.now())
   const lastPriceRef = useRef<number | null>(null)
+  const pnlPollingRef = useRef<(() => void) | null>(null)
 
   // Chart configuration for shadcn
   const chartConfig = {
@@ -64,13 +81,27 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     }
   } satisfies ChartConfig
 
-  // Get Hyperliquid hooks
+  // Get Hyperliquid hooks with proper typing
   const {
     address,
     isWalletConnected,
-    getAssetPnL,
     startPnLPolling
   } = useHyperliquid()
+
+  // Use separate hooks for better performance and error isolation
+  const pnlQuery = useRealTimePnL(address)
+  const assetPnLQuery = useAssetPnL(address, prediction?.asset.id)
+
+  // Error handling utility
+  const handlePnLError = useCallback((error: unknown): string => {
+    if (error instanceof Error) {
+      return error.message
+    }
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      return String(error.message)
+    }
+    return 'Unknown P&L error occurred'
+  }, [])
 
   // Initialize game start time when prediction starts
   useEffect(() => {
@@ -191,7 +222,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     return () => clearInterval(interval)
   }, [isActive, timeLeft, onComplete])
 
-  // Real-time P&L polling
+  // Real-time P&L polling with proper error handling
   useEffect(() => {
     if (type !== 'game' || !prediction || !address || !isWalletConnected) {
       return
@@ -199,64 +230,89 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
 
     setRealTimePnL(prev => ({ ...prev, isLoading: true, error: null }))
 
-    const stopPolling = startPnLPolling(
-      address,
-      async (pnlData) => {
-        if (!pnlData) {
-          setRealTimePnL(prev => ({
-            ...prev,
-            isLoading: false,
-            error: 'Failed to fetch P&L data'
-          }))
-          return
-        }
-
-        try {
-          const assetPnL = await getAssetPnL(address, prediction.asset.id)
-
-          if (assetPnL) {
-            setRealTimePnL({
-              unrealizedPnl: assetPnL.unrealizedPnl,
-              returnOnEquity: assetPnL.returnOnEquity,
-              positionValue: assetPnL.positionValue,
-              isLoading: false,
-              lastUpdate: Date.now(),
-              error: null
-            })
-          } else {
+    try {
+      const stopPolling = startPnLPolling(
+        address,
+        (pnlData: RealTimePnLData | null) => {
+          if (!pnlData) {
             setRealTimePnL(prev => ({
               ...prev,
-              unrealizedPnl: 0,
-              returnOnEquity: 0,
-              positionValue: 0,
               isLoading: false,
-              lastUpdate: Date.now(),
-              error: null
+              error: 'Failed to fetch P&L data'
+            }))
+            return
+          }
+
+          try {
+            // Use the asset PnL query data if available
+            const assetPnLData = assetPnLQuery.data
+
+            if (assetPnLData) {
+              setRealTimePnL({
+                unrealizedPnl: assetPnLData.unrealizedPnl,
+                returnOnEquity: assetPnLData.returnOnEquity,
+                positionValue: assetPnLData.positionValue,
+                isLoading: false,
+                lastUpdate: Date.now(),
+                error: null
+              })
+            } else {
+              setRealTimePnL(prev => ({
+                ...prev,
+                unrealizedPnl: 0,
+                returnOnEquity: 0,
+                positionValue: 0,
+                isLoading: false,
+                lastUpdate: Date.now(),
+                error: null
+              }))
+            }
+          } catch (error: unknown) {
+            const errorMessage = handlePnLError(error)
+            console.error('Error processing P&L data:', errorMessage)
+            setRealTimePnL(prev => ({
+              ...prev,
+              isLoading: false,
+              error: errorMessage
             }))
           }
-        } catch (error) {
-          console.error('Error processing P&L data:', error)
-          setRealTimePnL(prev => ({
-            ...prev,
-            isLoading: false,
-            error: 'Error processing P&L data'
-          }))
-        }
-      },
-      2000
-    )
+        },
+        2000
+      )
 
-    return () => {
-      stopPolling()
+      pnlPollingRef.current = stopPolling
+
+      return () => {
+        stopPolling()
+        pnlPollingRef.current = null
+      }
+    } catch (error: unknown) {
+      const errorMessage = handlePnLError(error)
+      console.error('Error starting P&L polling:', errorMessage)
+      setRealTimePnL(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage
+      }))
     }
-  }, [type, prediction, address, isWalletConnected, startPnLPolling, getAssetPnL])
+  }, [type, prediction, address, isWalletConnected, startPnLPolling, assetPnLQuery.data, handlePnLError])
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pnlPollingRef.current) {
+        pnlPollingRef.current()
+        pnlPollingRef.current = null
+      }
+    }
+  }, [])
 
   const progressPercent = ((initialTime - timeLeft) / initialTime) * 100
   const isLastSeconds = timeLeft <= 3
   const isLastSecond = timeLeft <= 1
 
   // Fallback to price-based calculation if real P&L is not available
-  const getFallbackPnL = useCallback(() => {
+  const getFallbackPnL = useCallback((): FallbackPnLData | null => {
     if (!prediction || !currentPrice) return null
 
     const priceDiff = currentPrice - prediction.entryPrice
@@ -273,8 +329,8 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     }
   }, [prediction, currentPrice])
 
-  // Determine which P&L to show
-  const getPnLDisplay = () => {
+  // Determine which P&L to show with proper typing
+  const getPnLDisplay = useCallback((): PnLDisplayData | null => {
     if (realTimePnL.lastUpdate && !realTimePnL.error) {
       const isWinning = realTimePnL.unrealizedPnl > 0
       const isLosing = realTimePnL.unrealizedPnl < 0
@@ -300,12 +356,12 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         isLoading: false
       }
     }
-  }
+  }, [realTimePnL, getFallbackPnL])
 
   const pnlDisplay = getPnLDisplay()
 
   // Get chart colors based on performance
-  const getChartColors = () => {
+  const getChartColors = useCallback(() => {
     if (isWinning === true) {
       return {
         stroke: 'hsl(var(--chart-1))', // Green
@@ -325,7 +381,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
       fill: 'url(#blueGradient)',
       glow: 'shadow-blue-500/50'
     }
-  }
+  }, [isWinning])
 
   const chartColors = getChartColors()
 
@@ -447,7 +503,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                tickFormatter={(value) => `${value.toFixed(0)}s`}
+                tickFormatter={(value: number) => `${value.toFixed(0)}s`}
                 tickMargin={10}
               />
 
@@ -463,7 +519,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                tickFormatter={(value) => `${value.toFixed(2)}`}
+                tickFormatter={(value: number) => `${value.toFixed(2)}`}
                 width={80}
               />
 
@@ -475,7 +531,6 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 strokeWidth={2}
                 label={{
                   value: `Entry $${prediction.entryPrice.toFixed(2)}`,
-                  // position: "topRight",
                   fill: "hsl(var(--chart-4))",
                   fontSize: 12
                 }}
@@ -504,9 +559,8 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
 
               <ChartTooltip
                 content={
-                  <ChartTooltipContent
-                    labelFormatter={(value) => `Time: ${value}s`}
-                    formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Price']}
+                  <DefaultTooltipContent<number, string>
+                    formatter={(value) => [value.toString(), "someLabel"]}
                   />
                 }
               />
@@ -566,7 +620,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         />
       </div>
 
-      {/* Enhanced P&L Display */}
+      {/* Enhanced P&L Display with Error Handling */}
       {pnlDisplay && (
         <motion.div
           key={`${pnlDisplay.isWinning}-${pnlDisplay.value}`}
@@ -582,12 +636,14 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
           <div className="flex items-center justify-center space-x-2 mb-2">
             {pnlDisplay.isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+            ) : realTimePnL.error ? (
+              <AlertCircle className="w-4 h-4 text-yellow-400" />
             ) : (
               <DollarSign className="w-4 h-4 text-yellow-400" />
             )}
             <div className="text-slate-400 text-sm">
               {pnlDisplay.isReal ? 'Live P&L' : 'Estimated P&L'}
-              {realTimePnL.lastUpdate && (
+              {realTimePnL.lastUpdate && !realTimePnL.error && (
                 <span className="ml-2 text-xs text-green-400">
                   ● Live
                 </span>
@@ -637,18 +693,33 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
             )}
           </motion.div>
 
-          {/* Data source indicator */}
-          {!pnlDisplay.isReal && !realTimePnL.isLoading && (
-            <div className="text-xs text-slate-500 mt-2">
-              Calculated from price movement
-            </div>
-          )}
+          {/* Data source indicator and error messages */}
+          <div className="mt-2 space-y-1">
+            {!pnlDisplay.isReal && !realTimePnL.isLoading && (
+              <div className="text-xs text-slate-500">
+                Calculated from price movement
+              </div>
+            )}
 
-          {realTimePnL.error && (
-            <div className="text-xs text-red-400 mt-2">
-              P&L data unavailable
-            </div>
-          )}
+            {realTimePnL.error && (
+              <div className="text-xs text-red-400 flex items-center justify-center space-x-1">
+                <AlertCircle className="w-3 h-3" />
+                <span>P&L data error: {realTimePnL.error}</span>
+              </div>
+            )}
+
+            {pnlQuery.error && (
+              <div className="text-xs text-yellow-400">
+                Warning: Real-time P&L unavailable
+              </div>
+            )}
+
+            {assetPnLQuery.error && (
+              <div className="text-xs text-yellow-400">
+                Warning: Asset P&L unavailable
+              </div>
+            )}
+          </div>
         </motion.div>
       )}
 

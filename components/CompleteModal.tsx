@@ -1,7 +1,7 @@
 // GameCompletionModal.tsx - New component for dramatic game completion
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Dialog, DialogContent } from './ui/dialog'
+import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Card } from './ui/card'
@@ -106,6 +106,7 @@ export function GameCompletionModal({
       {isOpen && (
         <Dialog open={isOpen} onOpenChange={onClose}>
           <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700 overflow-hidden">
+            <DialogTitle>Game Completed</DialogTitle>
             <motion.div
               variants={modalVariants}
               initial="hidden"
@@ -139,7 +140,7 @@ export function GameCompletionModal({
                 <motion.div variants={childVariants}>
                   <div className={`text-4xl font-bold mb-2 ${isWin ? 'text-green-400' : 'text-red-400'
                     }`}>
-                    {isWin ? '🎉 YOU WON!' : '💔 YOU LOST'}
+                    {isWin ? 'YOU WON!' : 'YOU LOST'}
                   </div>
                   <div className="text-slate-400">
                     Game completed after {prediction.timeWindow} seconds
@@ -298,7 +299,7 @@ export function GameCompletionModal({
                     className="mt-3 text-center"
                   >
                     <Badge variant="outline" className="text-yellow-400 border-yellow-400">
-                      🔥 {gameStats.currentStreak} Win Streak!
+                      {gameStats.currentStreak} Win Streak!
                     </Badge>
                   </motion.div>
                 )}
