@@ -9,7 +9,7 @@ import { TimeWindowSelector } from './TimeWindow'
 import { PredictionButtons } from './Prediction'
 import { ResultDisplay } from './ResultsDisplay'
 import { useHyperliquid } from '@/hooks/useHyperliquid'
-import { AlertTriangle, DollarSign, Loader2, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { AlertTriangle, DollarSign, Loader2, RefreshCw, Wifi, WifiOff, TrendingUp } from 'lucide-react'
 import { Badge } from './ui/badge'
 import { Alert, AlertDescription } from './ui/alert'
 import { Button } from './ui/button'
@@ -27,6 +27,82 @@ interface GameInterfaceProps {
   soundEnabled: boolean
 }
 
+// Leverage Selector Component
+const LeverageSelector = ({ 
+  leverage, 
+  onLeverageChange,
+  disabled = false,
+  selectedAsset
+}: { 
+  leverage: number
+  onLeverageChange: (leverage: number) => void 
+  disabled?: boolean
+  selectedAsset?: Asset | null
+}) => {
+  const leverageOptions = [10, 20, 30, 40] // Removed 50x since BTC max is 40x
+  const marginAmount = 10 // Fixed $10 margin
+  
+  return (
+    <Card className="p-4 bg-slate-900/50 border-slate-800">
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <TrendingUp className="w-4 h-4 text-blue-400" />
+          <span className="text-sm font-medium text-white">True Leverage</span>
+          <Badge variant="outline" className="text-green-400 border-green-400 text-xs">
+            $10 margin
+          </Badge>
+        </div>
+        
+        <div className="flex space-x-2">
+          {leverageOptions.map(option => {
+            const positionValue = marginAmount * option
+            const isMaxForBTC = selectedAsset?.id === 'BTC' && option > 40
+            const isMaxForETH = selectedAsset?.id === 'ETH' && option > 25
+            const isDisabled = disabled || isMaxForBTC || isMaxForETH
+            
+            return (
+              <button
+                key={option}
+                onClick={() => onLeverageChange(option)}
+                disabled={isDisabled}
+                className={`px-3 py-2 rounded text-sm font-medium transition-colors relative group ${
+                  leverage === option
+                    ? 'bg-blue-500 text-white'
+                    : isDisabled
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                {option}x
+                {/* Tooltip showing position value */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                  ${positionValue} position
+                  {isMaxForBTC && <div className="text-red-400">Max for BTC: 40x</div>}
+                  {isMaxForETH && <div className="text-red-400">Max for ETH: 25x</div>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        
+        <div className="text-xs text-slate-400 space-y-1">
+          <div className="flex justify-between">
+            <span>Margin:</span>
+            <span className="text-green-400">$10 USDC</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Position:</span>
+            <span className="text-blue-400">${marginAmount * leverage} (~{leverage}x)</span>
+          </div>
+          <div className="text-orange-400 text-center font-medium">
+            True leverage: Risk $10 to control ${marginAmount * leverage}
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 export function GameInterface({
   gameState,
   setGameState,
@@ -38,6 +114,7 @@ export function GameInterface({
 }: GameInterfaceProps) {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [timeWindow, setTimeWindow] = useState<number>(30)
+  const [selectedLeverage, setSelectedLeverage] = useState<number>(40) // Default to 40x
   const [countdownTime, setCountdownTime] = useState<number>(0)
   const [walletReady, setWalletReady] = useState(false)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
@@ -59,7 +136,8 @@ export function GameInterface({
     placePredictionOrder,
     onPositionResult,
     getActivePositions,
-    getCurrentPrice
+    getCurrentPrice,
+    calculatePositionSize
   } = useHyperliquid()
 
   // Get active positions
@@ -74,6 +152,8 @@ export function GameInterface({
     !orderError &&
     hlConnected
   )
+
+  console.log(hlConnected, canPlaceOrder)
 
   // Set default selected asset when assets load
   useEffect(() => {
@@ -101,7 +181,7 @@ export function GameInterface({
     }
   }, [activePositions.length])
 
-  // Handle real prediction order placement
+  // Handle real prediction order placement with leverage
   const handlePrediction = async (direction: 'up' | 'down') => {
     if (!selectedAsset || !canPlaceOrder) return
 
@@ -119,60 +199,118 @@ export function GameInterface({
             throw new Error(`No current price available for ${selectedAsset.id}`)
           }
 
+          // ✅ Calculate position size based on leverage
+          const positionCalc = await calculatePositionSize(selectedAsset.id, selectedLeverage)
+          console.log('Position calculation:', positionCalc)
+
           const orderRequest = {
             asset: selectedAsset.id,
             direction,
-            price: currentPrice, // Use real-time price
-            size: '10', // $10 fixed size
-            timeWindow
+            price: currentPrice,
+            size: positionCalc?.assetSize || '10', // Fallback to '10' if calculation fails
+            timeWindow,
+            leverage: selectedLeverage // ✅ Include leverage in request
           }
 
-          console.log('Placing prediction order:', orderRequest)
-          const response = await placePredictionOrder(orderRequest)
-          
-          if (response.success && response.fillInfo?.filled) {
-            // Order filled successfully - create prediction tracking
-            const prediction: Prediction = {
-              id: response.cloid || Date.now().toString(),
-              asset: selectedAsset,
-              direction,
-              entryPrice: response.fillInfo.fillPrice || currentPrice,
-              timeWindow,
-              timestamp: Date.now()
-            }
-            
-            setCurrentPrediction(prediction)
-            setGameState('active')
-            setOrderError(null)
-            
-            console.log('Order placed successfully:', {
-              orderId: response.orderId,
-              cloid: response.cloid,
-              fillPrice: response.fillInfo.fillPrice
-            })
-            
-            // Register for position outcome callback
-            if (response.cloid) {
-              onPositionResult(response.cloid, (result, exitPrice) => {
-                handleGameComplete(result, exitPrice)
-              })
-            }
-            
-          } else {
-            // Order failed or not filled
-            const errorMessage = response.error || 'Order was not filled'
-            
-            // Check for deposit requirement
-            if (errorMessage === 'NEEDS_HYPERLIQUID_DEPOSIT') {
-              setNeedsDeposit(true)
-              setOrderError(null)
-            } else {
-              setOrderError(errorMessage)
-            }
-            
-            setGameState('idle')
-            console.error('Order placement failed:', errorMessage)
-          }
+          console.log('Placing prediction order with leverage:', {
+            ...orderRequest,
+            estimatedUsdValue: positionCalc?.usdValue || 'unknown'
+          })
+// Fix for the handlePrediction function in GameInterface.tsx
+// Replace the order response handling section with this:
+
+const response = await placePredictionOrder(orderRequest)
+
+console.log('📦 Full order response:', JSON.stringify(response, null, 2))
+
+if (response.success) {
+  console.log('✅ Order succeeded, checking fill status...')
+  console.log('📊 Fill info:', response.fillInfo)
+  console.log('📊 Fill info filled?', response.fillInfo?.filled)
+  console.log('📊 Fill price:', response.fillInfo?.fillPrice)
+  
+  if (response.fillInfo?.filled) {
+    // ✅ Order filled immediately - start the game
+    const prediction: Prediction = {
+      id: response.cloid || Date.now().toString(),
+      asset: selectedAsset,
+      direction,
+      entryPrice: response.fillInfo.fillPrice || currentPrice,
+      timeWindow,
+      timestamp: Date.now()
+    }
+    
+    setCurrentPrediction(prediction)
+    setGameState('active')
+    setOrderError(null)
+    
+    console.log('✅ Order filled immediately with leverage:', {
+      orderId: response.orderId,
+      cloid: response.cloid,
+      fillPrice: response.fillInfo.fillPrice,
+      entryPrice: prediction.entryPrice, // This should match fillPrice
+      leverage: `${selectedLeverage}x`,
+      estimatedPositionValue: positionCalc?.usdValue,
+      timeWindow: timeWindow
+    })
+    
+    // Register for position outcome callback (auto-close)
+    if (response.cloid) {
+      onPositionResult(response.cloid, (result, exitPrice) => {
+        console.log(`🎯 Position result: ${result.toUpperCase()} - Entry: $${prediction.entryPrice} → Exit: $${exitPrice}`)
+        handleGameComplete(result, exitPrice)
+      })
+    }
+    
+  } else {
+    console.log('⚠️ Order not filled immediately, checking if resting...')
+    
+    // ⚠️ Order placed but didn't fill immediately (resting)
+    console.warn('⚠️ Order resting - monitoring for fill or auto-close')
+    
+    const prediction: Prediction = {
+      id: response.cloid || Date.now().toString(),
+      asset: selectedAsset,
+      direction,
+      entryPrice: currentPrice, // Use current price as estimated entry
+      timeWindow,
+      timestamp: Date.now()
+    }
+    
+    setCurrentPrediction(prediction)
+    setGameState('active') // Still start the game timer
+    setOrderError(null)
+    
+    // Show warning that order is pending
+    console.log('⚠️ Order resting - will be auto-closed when timer expires')
+    
+    // Register for position outcome callback
+    if (response.cloid) {
+      onPositionResult(response.cloid, (result, exitPrice) => {
+        console.log(`🎯 Position result: ${result.toUpperCase()} - Entry: ~$${prediction.entryPrice} → Exit: $${exitPrice}`)
+        handleGameComplete(result, exitPrice)
+      })
+    }
+  }
+} else {
+  // ❌ Order failed completely
+  console.error('❌ Order failed:', response)
+  const errorMessage = response.error || 'Order failed'
+  
+  // Check for specific error types
+  if (errorMessage === 'NEEDS_HYPERLIQUID_DEPOSIT') {
+    setNeedsDeposit(true)
+    setOrderError(null)
+  } else if (errorMessage.includes('ACCOUNT_NOT_FOUND')) {
+    setNeedsDeposit(true)
+    setOrderError(null)
+  } else {
+    setOrderError(errorMessage)
+  }
+  
+  setGameState('idle')
+  console.error('❌ Order placement failed:', errorMessage)
+}
         } catch (error: any) {
           const errorMessage = error.message || 'Failed to place order'
           setOrderError(errorMessage)
@@ -314,54 +452,59 @@ export function GameInterface({
 
       {/* Connection Status */}
       <Card className="p-4 bg-slate-900/50 border-slate-800">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            {hlConnected ? (
-              <>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <Wifi className="w-4 h-4 text-green-400" />
-                  <Badge variant="outline" className="text-green-400 border-green-400">
-                    Live Data
-                  </Badge>
-                </div>
-                <div className="text-sm text-slate-400">
-                  {assets.length} assets • Real-time prices
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                  <WifiOff className="w-4 h-4 text-red-400" />
-                  <Badge variant="outline" className="text-red-400 border-red-400">
-                    Disconnected
-                  </Badge>
-                </div>
-              </>
-            )}
+  <div className="flex items-center justify-between">
+    <div className="flex items-center space-x-3">
+      {hlConnected ? (
+        <>
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <Wifi className="w-4 h-4 text-green-400" />
+            <Badge variant="outline" className="text-green-400 border-green-400">
+              Live Data
+            </Badge>
           </div>
-          
-          <div className="flex items-center space-x-4">
-            {isWalletConnected && (
-              <>
-                <Badge variant="outline" className="text-blue-400 border-blue-400">
-                  <DollarSign className="w-3 h-3 mr-1" />
-                  $10 per trade
-                </Badge>
-                <Badge variant="outline" className="text-green-400 border-green-400">
-                  Wallet Connected
-                </Badge>
-              </>
-            )}
-            {lastUpdate && (
-              <div className="text-xs text-slate-500">
-                Last update: {lastUpdate.toLocaleTimeString()}
-              </div>
-            )}
+          <div className="text-sm text-slate-400">
+            {assets.length} assets • Real-time prices
           </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+            <WifiOff className="w-4 h-4 text-red-400" />
+            <Badge variant="outline" className="text-red-400 border-red-400">
+              Disconnected
+            </Badge>
+          </div>
+        </>
+      )}
+    </div>
+    
+    <div className="flex items-center space-x-4">
+      {isWalletConnected && selectedAsset && (
+        <>
+          <Badge variant="outline" className="text-orange-400 border-orange-400">
+            <DollarSign className="w-3 h-3 mr-1" />
+            $10 margin
+          </Badge>
+          <Badge variant="outline" className="text-blue-400 border-blue-400">
+            <TrendingUp className="w-3 h-3 mr-1" />
+            {selectedLeverage}x = ${10 * selectedLeverage}
+          </Badge>
+          <Badge variant="outline" className="text-green-400 border-green-400">
+            Wallet Connected
+          </Badge>
+        </>
+      )}
+      {lastUpdate && (
+        <div className="text-xs text-slate-500">
+          Last update: {lastUpdate.toLocaleTimeString()}
         </div>
-      </Card>
+      )}
+    </div>
+  </div>
+</Card>
+
 
       {/* Order Error Display */}
       {orderError && (
@@ -424,7 +567,7 @@ export function GameInterface({
 
       {/* Game Controls - Only show if wallet connected */}
       {isWalletConnected && (gameState === 'idle' || gameState === 'countdown') && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="p-6 bg-slate-900/50 border-slate-800">
             <AssetSelector
               assets={assets}
@@ -441,6 +584,14 @@ export function GameInterface({
               disabled={gameState !== 'idle' || !canPlaceOrder}
             />
           </Card>
+
+          {/* ✅ Leverage Selector */}
+          <LeverageSelector
+            leverage={selectedLeverage}
+            onLeverageChange={setSelectedLeverage}
+            disabled={gameState !== 'idle' || !canPlaceOrder}
+            selectedAsset={selectedAsset}
+          />
         </div>
       )}
 
@@ -464,8 +615,14 @@ export function GameInterface({
                 onComplete={() => {}} // Handled in handlePrediction
                 type="countdown"
               />
-              <div className="text-sm text-slate-400">
-                {isPlacingOrder ? 'Sending order to Hyperliquid...' : 'Get ready!'}
+              <div className="text-sm text-slate-400 space-y-1">
+                <div>{isPlacingOrder ? 'Sending order to Hyperliquid...' : 'Get ready!'}</div>
+                <div className="flex items-center justify-center space-x-2">
+                  <TrendingUp className="w-4 h-4 text-blue-400" />
+                  <span className="text-blue-400">{selectedLeverage}x leverage</span>
+                  <span>•</span>
+                  <span className="text-purple-400">${10 * (selectedLeverage / 20)} position</span>
+                </div>
               </div>
             </div>
           )}
@@ -492,29 +649,54 @@ export function GameInterface({
         </Card>
       )}
 
-      {/* Attribution */}
-      <div className="text-center text-xs text-slate-500 space-y-1">
-        <div>
-          Real-time data and trading via{' '}
-          <a 
-            href="https://hyperliquid.xyz" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-blue-400 hover:text-blue-300 underline transition-colors"
-          >
-            Hyperliquid
-          </a>
+{isWalletConnected && (
+  <Alert className="border-orange-500/50 bg-orange-500/10">
+    <DollarSign className="h-4 w-4 text-orange-400" />
+    <AlertDescription className="text-orange-400">
+      <div className="font-semibold mb-1">Margin Requirement</div>
+      <div className="text-sm space-y-1">
+        <div>Each trade requires $10 USDC margin in your Hyperliquid account</div>
+        <div className="flex items-center space-x-4">
+          <span>40x leverage = $400 position</span>
+          <span>•</span>
+          <span>Max BTC leverage: 40x</span>
+          <span>•</span>
+          <span>Max ETH leverage: 25x</span>
         </div>
-        <div className="flex items-center justify-center space-x-2">
-          <Badge variant="outline" className="text-xs px-2 py-0.5">
-            Testnet
-          </Badge>
-          <span>•</span>
-          <span>Real orders, no real money</span>
-          <span>•</span>
-          <span>$10 fixed prediction size</span>
+        <div className="text-xs text-orange-300 mt-2">
+          Make sure you have at least $10+ USDC in your Hyperliquid account before trading
         </div>
       </div>
+    </AlertDescription>
+  </Alert>
+)}
+
+
+      {/* Attribution */}
+      <div className="text-center text-xs text-slate-500 space-y-1">
+  <div>
+    Real-time data and trading via{' '}
+    <a 
+      href="https://hyperliquid.xyz" 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className="text-blue-400 hover:text-blue-300 underline transition-colors"
+    >
+      Hyperliquid
+    </a>
+  </div>
+  <div className="flex items-center justify-center space-x-2">
+    <Badge variant="outline" className="text-xs px-2 py-0.5">
+      Testnet
+    </Badge>
+    <span>•</span>
+    <span>$10 margin per trade</span>
+    <span>•</span>
+    <span>True leverage up to 40x</span>
+    <span>•</span>
+    <span>Max position: $400</span>
+  </div>
+</div>
     </div>
   )
 }
