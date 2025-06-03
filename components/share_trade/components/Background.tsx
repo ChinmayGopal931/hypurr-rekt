@@ -1,10 +1,9 @@
 import React from "react";
-import { BACKGROUND_IMAGE } from "../images";
 
 export const Background = () => {
   return (
     <img
-      src={BACKGROUND_IMAGE}
+      src={'/background.png'}
       width={1035}
       height={641}
       style={{

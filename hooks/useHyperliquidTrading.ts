@@ -1,29 +1,47 @@
 // src/hooks/hyperliquid/useHyperliquidOrders.ts
 import { useMutation, useQueryClient, UseMutationResult } from '@tanstack/react-query';
 import { useSignTypedData, useSwitchChain } from 'wagmi';
-import { hyperliquidOrders } from '@/service/hyperliquidOrders';
+import { hyperliquidOrders, OrderRequest as ServiceOrderRequest, OrderResponse as ServiceOrderResponse, SignTypedDataFunction as ServiceSignTypedDataFunction } from '@/service/hyperliquidOrders'; // Aliased to avoid name clash if local types exist
 import {
     hyperliquidKeys,
     handleApiError,
-    PlaceOrderParams,
-    CancelOrderParams,
-    OrderRequest, // Ensure this is imported or defined
-    OrderResponse, // Ensure this is imported or defined
-    Asset, // For fetching current price from cache
-} from '@/lib/utils'; // Assuming shared.ts is in the same directory
+    PlaceOrderParams, // Assuming this includes { request: ServiceOrderRequest, signTypedDataAsync: ServiceSignTypedDataFunction, userAddress: string, currentMarketPrice?: number }
+    CancelOrderParams, // Assuming this includes { asset: string; orderId: string; signTypedDataAsync: ServiceSignTypedDataFunction; userAddress: string }
+} from '@/lib/utils';
 import { Address, Chain } from 'viem';
+import { Asset } from '@/lib/types';
+
+// Re-export or use aliased types if needed locally, otherwise service types are used.
+export type OrderRequest = ServiceOrderRequest;
+export type OrderResponse = ServiceOrderResponse;
+
+
+export interface ExplicitClosePositionParams {
+    cloid: string;
+    // signTypedDataAsync and userAddress are available from useAccount and useSignTypedData hook context
+    // but explicitClosePositionByCloid in service doesn't directly take them as it uses initialized agent.
+}
+
+export interface ExplicitClosePositionResponse {
+    success: boolean;
+    exitPrice?: number;
+    error?: string;
+}
 
 export interface UseHyperliquidOrderMutations {
     placePredictionOrder: UseMutationResult<OrderResponse, Error, PlaceOrderParams, unknown>;
     cancelOrder: UseMutationResult<boolean, Error, CancelOrderParams, unknown>;
+    explicitClosePosition: UseMutationResult<ExplicitClosePositionResponse, Error, ExplicitClosePositionParams, unknown>;
 }
 
 export interface UseHyperliquidOrdersReturn {
     placePredictionOrder: (params: { request: OrderRequest, currentMarketPrice?: number }) => Promise<OrderResponse>;
     cancelOrder: (params: { asset: string; orderId: string }) => Promise<boolean>;
+    explicitClosePosition: (params: ExplicitClosePositionParams) => Promise<ExplicitClosePositionResponse>;
     mutations: UseHyperliquidOrderMutations;
     isProcessingOrder: boolean;
     isCancellingOrder: boolean;
+    isClosingPosition: boolean;
 }
 
 export function useHyperliquidOrders(address: Address | undefined, isWalletConnected: boolean, chain: Chain | undefined): UseHyperliquidOrdersReturn {
@@ -33,12 +51,10 @@ export function useHyperliquidOrders(address: Address | undefined, isWalletConne
 
     const placePredictionOrderMutation = useMutation<OrderResponse, Error, PlaceOrderParams, unknown>({
         mutationFn: async ({ request, signTypedDataAsync: signData, userAddress, currentMarketPrice }: PlaceOrderParams): Promise<OrderResponse> => {
-            // Use current market price if not specified or zero
             if (!request.price || request.price === 0) {
                 if (currentMarketPrice) {
                     request.price = currentMarketPrice;
                 } else {
-                    // Attempt to get current price from cache if not provided
                     const priceData = queryClient.getQueryData<Asset[]>(hyperliquidKeys.priceData());
                     const assetPriceInfo = priceData?.find(a => a.id === request.asset);
                     if (!assetPriceInfo?.price) {
@@ -47,7 +63,9 @@ export function useHyperliquidOrders(address: Address | undefined, isWalletConne
                     request.price = assetPriceInfo.price;
                 }
             }
-            return hyperliquidOrders.placePredictionOrder(request, signData, userAddress);
+            // Ensure signData (from hook's signTypedDataAsync) is correctly typed for the service
+            const serviceSignData = signData as ServiceSignTypedDataFunction;
+            return hyperliquidOrders.placePredictionOrder(request, serviceSignData, userAddress);
         },
         onSuccess: (result: OrderResponse): void => {
             if (result.success) {
@@ -64,8 +82,8 @@ export function useHyperliquidOrders(address: Address | undefined, isWalletConne
     });
 
     const cancelOrderMutation = useMutation<boolean, Error, CancelOrderParams, unknown>({
-        mutationFn: async ({ asset, orderId, signTypedDataAsync: signData, userAddress }: CancelOrderParams): Promise<boolean> => {
-            return hyperliquidOrders.cancelOrder(asset, orderId, signData, userAddress);
+        mutationFn: async ({ asset, orderId }: CancelOrderParams): Promise<boolean> => {
+            return hyperliquidOrders.cancelOrder(asset, orderId);
         },
         onSuccess: (success: boolean): void => {
             if (success) {
@@ -81,43 +99,63 @@ export function useHyperliquidOrders(address: Address | undefined, isWalletConne
         },
     });
 
+    const explicitClosePositionMutation = useMutation<ExplicitClosePositionResponse, Error, ExplicitClosePositionParams, unknown>({
+        mutationFn: async ({ cloid }: ExplicitClosePositionParams): Promise<ExplicitClosePositionResponse> => {
+            // Agent initialization should have happened when placing the order or via other app flows.
+            // The service's explicitClosePositionByCloid uses the existing agent.
+            return hyperliquidOrders.explicitClosePositionByCloid(cloid);
+        },
+        onSuccess: (result, variables) => {
+            if (result.success) {
+                queryClient.invalidateQueries({ queryKey: hyperliquidKeys.positions(address) });
+                console.log(`✅ Position ${variables.cloid} explicitly closed, refreshing positions. Exit: $${result.exitPrice}`);
+            } else {
+                console.warn(`⚠️ Position ${variables.cloid} explicit close reported success:false by API:`, result.error);
+            }
+        },
+        onError: (error: Error, variables) => {
+            const apiError = handleApiError(error);
+            console.error(`❌ Position ${variables.cloid} explicit close mutation failed:`, apiError.message, apiError.details);
+        },
+    });
+
     const placePredictionOrder = async ({ request, currentMarketPrice }: { request: OrderRequest, currentMarketPrice?: number }): Promise<OrderResponse> => {
         if (!isWalletConnected || !address || !signTypedDataAsync) {
             return { success: false, error: 'Wallet not connected or signature function unavailable.' };
         }
 
-        // Leverage validation (example, adjust as per actual limits)
-        const maxLeverage = request.asset === 'BTC' ? 40 : request.asset === 'ETH' ? 25 : 50; // Example values
+        const maxLeverage = request.asset === 'BTC' ? 40 : request.asset === 'ETH' ? 25 : 50;
         if (request.leverage && request.leverage > maxLeverage) {
             return { success: false, error: `Maximum leverage for ${request.asset} is ${maxLeverage}x` };
         }
+        if (request.leverage && request.leverage <= 0) {
+            console.warn(`Invalid leverage ${request.leverage} for ${request.asset}, defaulting to 20x.`);
+            request.leverage = 20; // Default or handle error
+        }
 
-        // Network validation (Arbitrum Sepolia testnet example)
-        const expectedChainId = 421614;
+
+        const expectedChainId = hyperliquidOrders.getApiUrl().includes('testnet') ? 421614 : 42161; // Assuming mainnet Arbitrum One
         if (chain?.id !== expectedChainId) {
             if (switchChainAsync) {
                 try {
                     await switchChainAsync({ chainId: expectedChainId });
-                    // Re-check chain after switch attempt if necessary, or rely on UI update
                 } catch (switchError: unknown) {
                     const handledError = handleApiError(switchError);
-                    return { success: false, error: `Please switch to Arbitrum Sepolia. Error: ${handledError.message}` };
+                    return { success: false, error: `Please switch to ${expectedChainId === 421614 ? 'Arbitrum Sepolia' : 'Arbitrum One'}. Error: ${handledError.message}` };
                 }
             } else {
-                return { success: false, error: 'Please switch to Arbitrum Sepolia. Wallet does not support chain switching or switchChainAsync is undefined.' };
+                return { success: false, error: `Please switch to ${expectedChainId === 421614 ? 'Arbitrum Sepolia' : 'Arbitrum One'}. Wallet does not support chain switching.` };
             }
         }
-
-
 
         try {
             return await placePredictionOrderMutation.mutateAsync({
                 request,
                 signTypedDataAsync,
                 userAddress: address,
-                currentMarketPrice, // Pass it to the mutation function
+                currentMarketPrice,
             });
-        } catch (error) { // This catches errors if mutateAsync itself throws (e.g., network issues before mutationFn runs)
+        } catch (error) {
             const handledError = handleApiError(error);
             return { success: false, error: handledError.message };
         }
@@ -128,7 +166,6 @@ export function useHyperliquidOrders(address: Address | undefined, isWalletConne
             console.error('Wallet not connected for cancelling order.');
             return false;
         }
-
         try {
             return await cancelOrderMutation.mutateAsync({
                 asset,
@@ -143,14 +180,29 @@ export function useHyperliquidOrders(address: Address | undefined, isWalletConne
         }
     };
 
+    const explicitClosePosition = async ({ cloid }: ExplicitClosePositionParams): Promise<ExplicitClosePositionResponse> => {
+        if (!isWalletConnected || !address) { // signTypedDataAsync not directly needed for this call to service, but wallet must be connected.
+            return { success: false, error: 'Wallet not connected for closing position.' };
+        }
+        try {
+            return await explicitClosePositionMutation.mutateAsync({ cloid });
+        } catch (error) {
+            const handledError = handleApiError(error);
+            return { success: false, error: `Failed to initiate close for position ${cloid}: ${handledError.message}` };
+        }
+    };
+
     return {
         placePredictionOrder,
         cancelOrder,
+        explicitClosePosition,
         mutations: {
             placePredictionOrder: placePredictionOrderMutation,
             cancelOrder: cancelOrderMutation,
+            explicitClosePosition: explicitClosePositionMutation,
         },
         isProcessingOrder: placePredictionOrderMutation.isPending,
         isCancellingOrder: cancelOrderMutation.isPending,
+        isClosingPosition: explicitClosePositionMutation.isPending,
     };
 }

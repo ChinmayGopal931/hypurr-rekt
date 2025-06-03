@@ -12,21 +12,12 @@ import { OrderBook, OrderBookLevel, HyperliquidAsset as SDKHyperliquidAsset, Pri
 import { AssetConfig, hyperliquidOrders, HyperliquidOrderService, OrderRequest, PositionPnL, RealTimePnLData } from "@/service/hyperliquidOrders";
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { ethers } from "ethers";
+import { Asset } from "./types";
 
 // Re-export or define shared types to avoid import issues from the original monolithic file
 export type HyperliquidAsset = SDKHyperliquidAsset;
 export type { PriceFeed, OrderBook, OrderBookLevel };
 
-
-// SHARED INTERFACES (originally in useHyperliquid.ts)
-export interface Asset {
-  id: string;
-  name: string;
-  symbol: string;
-  price: number;
-  change24h: number;
-  timestamp: number;
-}
 
 export interface PriceHistory {
   [symbol: string]: Array<{ price: number; timestamp: number }>;
@@ -120,6 +111,7 @@ export const transformAssets = (
         symbol: `${asset.name}-PERP`,
         price: currentPrice,
         change24h,
+        maxLeverage: asset.maxLeverage ?? 0,
         timestamp
       };
     })
@@ -222,17 +214,50 @@ export function processOrderBook(orderBook: OrderBook | null): ProcessedOrderBoo
   };
 }
 
+export function getTopLeverageAssets(
+  metadataUniverse: HyperliquidAsset[] | undefined | null,
+  count: number = 10
+): HyperliquidAsset[] {
+  // Return an empty array if the input is null, undefined, or empty
+  if (!metadataUniverse || metadataUniverse.length === 0) {
+    return [];
+  }
+
+  // Create a copy before sorting to avoid mutating the original array
+  const sortedAssets = [...metadataUniverse].sort((a, b) => {
+    // Handle cases where maxLeverage might be undefined or null,
+    // though based on your schema, it should be a number.
+    // Default to 0 if undefined/null to ensure proper sorting.
+    const leverageA = a.maxLeverage ?? 0;
+    const leverageB = b.maxLeverage ?? 0;
+
+    // Sort in descending order (higher leverage first)
+    return leverageB - leverageA;
+  });
+
+  // Return the top 'count' assets
+  return sortedAssets.slice(0, count);
+}
+
 // 1. Asset Metadata Hook - No caching (as requested)
 export function useAssetMetadata(): UseQueryResult<HyperliquidAsset[], Error> {
   return useQuery({
     queryKey: hyperliquidKeys.assetMetadata(),
     queryFn: async (): Promise<HyperliquidAsset[]> => {
       const metadata = await hyperliquid.fetchPerpetualMeta();
-      return metadata.universe;
+
+      // Sort by maxLeverage in descending order and take top 10
+      return metadata.universe
+        .sort((a, b) => {
+          const leverageA = a.maxLeverage ?? 0;
+          const leverageB = b.maxLeverage ?? 0;
+          return leverageB - leverageA;
+        })
+        .slice(0, 10);
     },
     // MODIFIED CACHE TIMES:
-    staleTime: 1000 * 60 * 5,    // Consider data fresh for 5 minutes
-    gcTime: 1000 * 60 * 10,     // Keep unused data for 10 minutes
+    staleTime: 1000 * 60 * 60,    // Consider data fresh for 60 minutes
+    gcTime: 1000 * 60 * 60,     // Keep unused data for 60 minutes
     refetchOnWindowFocus: false,
     retry: 3,
   });

@@ -4,27 +4,9 @@ import { useState } from 'react'
 import { GameInterface } from '@/components/GameInterface'
 import { StatsPanel } from '@/components/StatsPanel'
 import { Header } from '@/components/GameHeader'
-
-export type Asset = {
-  id: string
-  name: string
-  symbol: string
-  price: number
-  change24h: number
-}
+import { Prediction } from '@/lib/types'
 
 export type GameState = 'idle' | 'countdown' | 'active' | 'result'
-
-export type Prediction = {
-  id: string
-  asset: Asset
-  direction: 'up' | 'down'
-  entryPrice: number
-  timeWindow: number
-  timestamp: number
-  result?: 'win' | 'loss'
-  exitPrice?: number
-}
 
 export type GameStats = {
   totalGames: number
@@ -53,12 +35,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
-      <Header 
+      <Header
         gameStats={gameStats}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
       />
-      
+
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           {/* Main Game Interface */}
@@ -73,10 +55,10 @@ export default function Home() {
               soundEnabled={soundEnabled}
             />
           </div>
-          
+
           {/* Stats Panel */}
           <div className="xl:col-span-1">
-            <StatsPanel 
+            <StatsPanel
               gameStats={gameStats}
               currentPrediction={currentPrediction}
             />
