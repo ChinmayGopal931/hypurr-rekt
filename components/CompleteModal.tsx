@@ -15,9 +15,8 @@ import {
   BarChart3,
   Image as ImageIcon // Added for generate image button
 } from 'lucide-react';
-import { GameStats } from '@/app/page';
 import { render } from "./share_trade/render"// Import the render function from your image generation module
-import { Prediction } from '@/lib/types';
+import { GameStats, Prediction } from '@/lib/types';
 
 interface GameCompletionModalProps {
   isOpen: boolean;

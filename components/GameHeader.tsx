@@ -2,7 +2,7 @@
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Volume2, VolumeX, TrendingUp } from 'lucide-react'
-import { GameStats } from '@/app/page'
+import { GameStats } from '@/lib/types'
 
 interface HeaderProps {
   gameStats: GameStats

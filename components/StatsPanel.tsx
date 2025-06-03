@@ -1,9 +1,9 @@
 import { Card } from './ui/card'
 import { Badge } from './ui/badge'
 import { Progress } from './ui/progress'
-import { GameStats } from '@/app/page'
 import { Trophy, Target, TrendingUp, Flame, BarChart3 } from 'lucide-react'
 import { Prediction } from '@/lib/types'
+import { GameStats } from '@/lib/types'
 
 interface StatsPanelProps {
   gameStats: GameStats
