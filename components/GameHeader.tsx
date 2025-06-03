@@ -22,7 +22,6 @@ export function Header({ gameStats, soundEnabled, setSoundEnabled }: HeaderProps
             </div>
             <div>
               <h1 className="text-xl font-bold text-white">HYPURREKT</h1>
-              <p className="text-xs text-slate-400">Price Pulse Rider</p>
             </div>
           </div>
 

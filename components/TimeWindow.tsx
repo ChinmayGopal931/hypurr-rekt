@@ -8,7 +8,6 @@ interface CombinedSettingsSelectorProps {
   timeWindow: number
   onTimeWindowSelect: (window: number) => void
   leverage: number
-  onLeverageChange: (leverage: number) => void
   disabled?: boolean
   selectedAsset?: Asset | null
 }

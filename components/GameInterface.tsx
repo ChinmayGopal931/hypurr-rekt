@@ -58,7 +58,6 @@ export function GameInterface({
   // Local state with proper typing
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [timeWindow, setTimeWindow] = useState<number>(30)
-  const [selectedLeverage, setSelectedLeverage] = useState<number>(40)
   const [countdownTime, setCountdownTime] = useState<number>(0)
   const [walletReady, setWalletReady] = useState(false)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
@@ -168,7 +167,7 @@ export function GameInterface({
     setCompletionData({
       prediction: updatedPrediction,
       exitPrice,
-      leverage: selectedLeverage,
+      leverage: selectedAsset?.maxLeverage || 1,
       positionValue
     })
     setShowCompletionModal(true)
@@ -190,7 +189,7 @@ export function GameInterface({
     setGameStats(newStats)
 
     console.log(`Trade completed: ${result.toUpperCase()} at $${exitPrice}`)
-  }, [currentPrediction, selectedLeverage, gameStats, setGameStats])
+  }, [currentPrediction, gameStats, setGameStats])
 
 
   const handlePrediction = useCallback(async (direction: 'up' | 'down'): Promise<void> => {
@@ -220,7 +219,7 @@ export function GameInterface({
           price: currentPrice,
           size: positionCalc?.assetSize || '10',
           timeWindow: 0, // ✅ CHANGED: Set to 0 so GameTimer controls timing
-          leverage: selectedLeverage
+          leverage: selectedAsset.maxLeverage
         }
 
         console.log('Placing prediction order with leverage (GameTimer will manage closure):', {
@@ -237,7 +236,7 @@ export function GameInterface({
               id: response.cloid || Date.now().toString(),
               asset: selectedAsset,
               direction,
-              leverage: selectedLeverage,
+              leverage: selectedAsset?.maxLeverage || 1,
               entryPrice: response.fillInfo.fillPrice || currentPrice,
               timeWindow, // ✅ Keep the UI timeWindow for GameTimer
               timestamp: Date.now()
@@ -262,7 +261,7 @@ export function GameInterface({
               cloid: response.cloid,
               fillPrice: response.fillInfo.fillPrice,
               entryPrice: prediction.entryPrice,
-              leverage: `${selectedLeverage}x`,
+              leverage: `${selectedAsset?.maxLeverage}x`,
               estimatedPositionValue: positionCalc?.usdValue,
               uiTimeWindow: timeWindow,
               serviceTimeWindow: 0
@@ -337,7 +336,6 @@ export function GameInterface({
     setGameState,
     getCurrentPrice,
     calculatePositionSize,
-    selectedLeverage,
     handleGameComplete,
     timeWindow, // Keep timeWindow in dependencies for UI
     placePredictionOrder,
@@ -497,7 +495,7 @@ export function GameInterface({
                 <span className="font-semibold">Order Placed Successfully!</span>
               </div>
               <div className="text-sm text-green-300 mt-1">
-                Position opened with {selectedLeverage}x leverage
+                Position opened with {selectedAsset?.maxLeverage}x leverage
               </div>
             </Card>
           </motion.div>
@@ -596,8 +594,7 @@ export function GameInterface({
             <CombinedSettingsSelector
               timeWindow={timeWindow}
               onTimeWindowSelect={setTimeWindow}
-              leverage={selectedLeverage}
-              onLeverageChange={setSelectedLeverage}
+              leverage={selectedAsset?.maxLeverage || 1}
               disabled={gameState !== 'idle' || !canPlaceOrder}
               selectedAsset={selectedAsset}
             />

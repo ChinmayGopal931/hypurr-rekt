@@ -6,7 +6,7 @@ import { Providers } from '@/providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'HYPURREKT - Price Pulse Rider',
+  title: 'HYPURREKT',
   description: 'Fast-paced crypto price prediction game',
 }
 
