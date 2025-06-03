@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Trophy, X, TrendingUp, TrendingDown, RotateCcw } from 'lucide-react'
-import { Prediction } from '@/app/page'
+import { Prediction } from '@/lib/types'
 
 interface ResultDisplayProps {
   prediction: Prediction
