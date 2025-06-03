@@ -9,8 +9,9 @@ export function cn(...inputs: ClassValue[]) {
 // src/hooks/hyperliquid/shared.ts
 import type { SignTypedDataMutateAsync } from '@wagmi/core/query';
 import { OrderBook, OrderBookLevel, HyperliquidAsset as SDKHyperliquidAsset, PriceFeed, hyperliquid } from '@/service/hyperliquid'; // Assuming these are SDK types
-import { OrderRequest } from "@/service/hyperliquidOrders";
+import { AssetConfig, hyperliquidOrders, HyperliquidOrderService, OrderRequest, PositionPnL, RealTimePnLData } from "@/service/hyperliquidOrders";
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
+import { ethers } from "ethers";
 
 // Re-export or define shared types to avoid import issues from the original monolithic file
 export type HyperliquidAsset = SDKHyperliquidAsset;
@@ -235,4 +236,230 @@ export function useAssetMetadata(): UseQueryResult<HyperliquidAsset[], Error> {
     refetchOnWindowFocus: false,
     retry: 3,
   });
+}
+
+export function formatPrice(price: number, assetDecimals: number): string {
+  try {
+    // Validate input price
+    if (isNaN(price) || !isFinite(price)) {
+      throw new Error(`Invalid price: ${price}`);
+    }
+
+    // Helper: Truncate decimals without rounding
+    function truncateDecimals(num: number, decimals: number): number {
+      const factor = Math.pow(10, decimals);
+      return Math.floor(num * factor) / factor;
+    }
+
+    // Helper: Count significant digits in a number
+    function countSignificantDigits(num: number): number {
+      if (num === 0) return 0;
+      const str = num.toExponential(); // e.g. "1.23456e+3"
+      const digits = str.replace(/\.|e.*$/g, ''); // remove dot and exponent
+      const sigDigits = digits.replace(/^0+/, ''); // remove leading zeros
+      return sigDigits.length;
+    }
+
+    // Helper: Truncate number to max significant figures without rounding
+    function truncateToSignificantFigures(num: number, maxSigFigs: number): number {
+      if (num === 0) return 0;
+      const digits = Math.floor(Math.log10(Math.abs(num))) + 1;
+      const decimals = maxSigFigs - digits;
+      if (decimals < 0) {
+        // Truncate integer part
+        const factor = Math.pow(10, digits - maxSigFigs);
+        return Math.floor(num / factor) * factor;
+      } else {
+        // Truncate decimals
+        return truncateDecimals(num, decimals);
+      }
+    }
+
+    // Calculate max decimals allowed based on assetDecimals
+    const maxDecimals = Math.min(6, Math.max(1, 6 - assetDecimals));
+    const maxSignificantFigures = 5;
+
+    // Step 1: Truncate decimals to maxDecimals
+    let truncatedPrice = truncateDecimals(price, maxDecimals);
+
+    // Step 2: Truncate to max significant figures if exceeded
+    const sigDigits = countSignificantDigits(truncatedPrice);
+    if (sigDigits > maxSignificantFigures) {
+      truncatedPrice = truncateToSignificantFigures(truncatedPrice, maxSignificantFigures);
+    }
+
+    // Step 3: Format number to fixed decimals and remove trailing zeros
+    const formatted = truncatedPrice.toFixed(maxDecimals).replace(/\.?0+$/, '');
+
+    console.log(`Formatted price: ${price} -> ${formatted} (maxDecimals: ${maxDecimals})`);
+
+    return formatted;
+  } catch (error) {
+    console.error('Error formatting price:', error);
+    // Fallback: return original price as string
+    return price.toString();
+  }
+}
+
+
+/**
+ * Generate a unique client order ID
+ */
+export function generateCloid(): string {
+  return '0x' + Buffer.from(ethers.randomBytes(16)).toString('hex')
+}
+
+
+/**
+ * Fetch real-time P&L data from Hyperliquid
+ */
+export async function getRealTimePnL(userAddress: string): Promise<RealTimePnLData | null> {
+  try {
+    const response = await fetch(`${hyperliquidOrders.getApiUrl()}/info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'clearinghouseState',
+        user: userAddress.toLowerCase()
+      })
+    })
+
+    if (!response.ok) {
+      console.warn('Failed to fetch P&L data:', response.status)
+      return null
+    }
+
+    const result = await response.json()
+
+    if (!result || !result.assetPositions) {
+      return {
+        totalUnrealizedPnl: 0,
+        positions: [],
+        lastUpdate: Date.now()
+      }
+    }
+
+    // Extract position data
+    const positions: PositionPnL[] = result.assetPositions
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((pos: any) => parseFloat(pos.position.szi) !== 0) // Only open positions
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((pos: any) => ({
+        asset: pos.position.coin,
+        size: pos.position.szi,
+        entryPx: pos.position.entryPx || '0',
+        unrealizedPnl: pos.position.unrealizedPnl || '0',
+        returnOnEquity: pos.position.returnOnEquity || '0',
+        positionValue: pos.position.positionValue || '0',
+        leverage: pos.position.leverage || '1'
+      }))
+
+    // Calculate total unrealized P&L
+    const totalUnrealizedPnl = positions.reduce((total, pos) => {
+      return total + parseFloat(pos.unrealizedPnl)
+    }, 0)
+
+    return {
+      totalUnrealizedPnl,
+      positions,
+      lastUpdate: Date.now()
+    }
+
+  } catch (error) {
+    console.error('Error fetching real-time P&L:', error)
+    return null
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function checkUserAccount(userAddress: string): Promise<{ exists: boolean, balance?: any }> {
+  try {
+    const response = await fetch(`${hyperliquidOrders.getApiUrl()}/info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'clearinghouseState',
+        user: userAddress.toLowerCase()
+      })
+    })
+
+    if (!response.ok) {
+      console.log('❌ Account check failed:', response.status)
+      return { exists: false }
+    }
+
+    const result = await response.json()
+    console.log('🔍 Account check result:', result)
+
+    if (result && (result.marginSummary || result.crossMarginSummary)) {
+      console.log('✅ Account exists with balance')
+      return { exists: true, balance: result }
+    } else {
+      console.log('❌ Account does not exist or has no balance')
+      return { exists: false }
+    }
+  } catch (error) {
+    console.error('❌ Error checking account:', error)
+    return { exists: false }
+  }
+}
+
+/**
+ * Get asset configuration from metadata via direct API call
+ */
+export async function getAssetConfig(assetSymbol: string): Promise<AssetConfig> {
+  try {
+    const response = await fetch(`${hyperliquidOrders.getApiUrl()}/info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'meta' })
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch perpetual metadata: ${response.status}`)
+    }
+
+    const metadata = await response.json()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const asset = metadata.universe.find((a: any) => a.name === assetSymbol)
+
+    if (!asset) {
+      throw new Error(`Asset ${assetSymbol} not found`)
+    }
+
+    const assetId = metadata.universe.indexOf(asset) // Index in array = asset ID
+
+    return {
+      assetId,
+      szDecimals: asset.szDecimals,
+      maxLeverage: asset.maxLeverage || 1
+    }
+  } catch (error) {
+    throw new Error(`Failed to get asset config: ${error}`)
+  }
+}
+
+
+export function calculateTrueLeveragePosition(leverage: number = 20): number {
+  const positionValue = HyperliquidOrderService.MARGIN_AMOUNT * leverage
+  console.log(`💰 True leverage: $${HyperliquidOrderService.MARGIN_AMOUNT} margin × ${leverage}x = $${positionValue} position`)
+  return positionValue
+}
+
+
+export function calculateOrderSizeWithTrueLeverage(price: number, assetDecimals: number, leverage: number = 20): string {
+  const positionValue = calculateTrueLeveragePosition(leverage);
+  const assetSize = positionValue / price;
+
+  // Format properly for Hyperliquid
+  const factor = Math.pow(10, assetDecimals);
+  const rounded = Math.floor(assetSize * factor) / factor;
+
+  return rounded.toString().replace(/\.?0+$/, '');
 }

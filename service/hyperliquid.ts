@@ -15,13 +15,6 @@ export interface PriceFeed {
   [symbol: string]: string
 }
 
-export interface AllMidsMessage {
-  channel: string
-  data: {
-    mids: PriceFeed
-  }
-}
-
 // Order Book Interfaces
 export interface OrderBookLevel {
   px: string  // price
@@ -42,13 +35,6 @@ export interface L2BookRequest {
   mantissa?: number
 }
 
-export interface L2BookMessage {
-  channel: string
-  data: {
-    levels: [OrderBookLevel[], OrderBookLevel[]]
-    coin: string
-  }
-}
 
 export class HyperliquidService {
   private static readonly MAINNET_API = 'https://api.hyperliquid.xyz'

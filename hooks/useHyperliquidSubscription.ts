@@ -2,8 +2,7 @@
 import { useQuery, useQueryClient, UseQueryResult } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { hyperliquid, HyperliquidAsset, PriceFeed, OrderBook } from '@/service/hyperliquid';
-import { Asset, PriceHistory, transformAssets } from '@/lib/utils';
-import { hyperliquidKeys } from './useHyperliquid'; // Assuming it's in the same directory
+import { Asset, hyperliquidKeys, PriceHistory, transformAssets } from '@/lib/utils';
 
 // Real-time Price Data Hook - WebSocket + React Query integration
 export function usePriceData(assets: HyperliquidAsset[]): UseQueryResult<Asset[], Error> {

@@ -353,9 +353,6 @@ export function GameInterface({
     }
   }, [gameState])
 
-  // MODIFIED LOADING LOGIC START
-  const isInitialLoading = queries.assetMetadata.isLoading || (queries.priceData.isLoading && assets.length === 0);
-
   // Destructure query states for clarity
   const { assetMetadata: assetMetadataQuery, priceData: priceDataQueryInfo } = queries;
 
@@ -444,26 +441,7 @@ export function GameInterface({
     );
   }
 
-  // No assets loaded
-  if (!isInitialLoading && assets.length === 0) {
-    return (
-      <div className="space-y-6">
-        <Card className="p-8 bg-slate-900/50 border-slate-800">
-          <div className="text-center space-y-4">
-            <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto" />
-            <div className="text-white text-lg font-semibold">No Trading Assets Available</div>
-            <div className="text-slate-400 text-sm">
-              Could not fetch any assets from Hyperliquid. Please try refreshing.
-            </div>
-            <Button onClick={handleRefresh} variant="outline">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+
 
   return (
     <div className="space-y-6" onClick={clearError}>

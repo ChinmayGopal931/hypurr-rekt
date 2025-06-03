@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, UseQueryResult } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { hyperliquid, HyperliquidAsset, OrderBook } from '@/service/hyperliquid'
 import { hyperliquidOrders, PositionInfo, RealTimePnLData } from '@/service/hyperliquidOrders'
-import { Asset, handleApiError, PriceHistory, processOrderBook, useAssetMetadata } from '@/lib/utils'
+import { Asset, getRealTimePnL, handleApiError, hyperliquidKeys, PriceHistory, processOrderBook, useAssetMetadata } from '@/lib/utils'
 import { useOrderBook, usePriceData } from './useHyperliquidSubscription'
 
 
@@ -88,18 +88,6 @@ export interface UseHyperliquidReturn {
   queries: UseHyperliquidQueries
 }
 
-// Query Keys - centralized for consistency
-export const hyperliquidKeys = {
-  all: ['hyperliquid'] as const,
-  assetMetadata: () => [...hyperliquidKeys.all, 'metadata'] as const,
-  priceData: () => [...hyperliquidKeys.all, 'priceData'] as const,
-  priceHistory: () => [...hyperliquidKeys.all, 'priceHistory'] as const,
-  positions: (address?: string) => [...hyperliquidKeys.all, 'positions', address] as const,
-  pnl: (address?: string) => [...hyperliquidKeys.all, 'pnl', address] as const,
-  assetPnl: (address?: string, asset?: string) => [...hyperliquidKeys.all, 'assetPnl', address, asset] as const,
-  orderBook: (coin?: string) => [...hyperliquidKeys.all, 'orderBook', coin] as const,
-} as const
-
 
 // 3. Price History Hook - For analysis
 export function usePriceHistory(): UseQueryResult<PriceHistory, Error> {
@@ -133,7 +121,7 @@ export function useRealTimePnL(address?: string): UseQueryResult<RealTimePnLData
     queryKey: hyperliquidKeys.pnl(address),
     queryFn: async (): Promise<RealTimePnLData | null> => {
       if (!address) return null
-      return await hyperliquidOrders.getRealTimePnL(address)
+      return await getRealTimePnL(address)
     },
     enabled: !!address,
     refetchInterval: 2000, // Every 2 seconds
@@ -247,7 +235,7 @@ export function useHyperliquid(address: `0x${string}` | undefined): UseHyperliqu
 
   // P&L functions - integrated with React Query
   const getRealTimePnL = useCallback(async (userAddress: string): Promise<RealTimePnLData | null> => {
-    return pnlQuery.data || await hyperliquidOrders.getRealTimePnL(userAddress)
+    return pnlQuery.data || await getRealTimePnL(userAddress)
   }, [pnlQuery.data])
 
   const getAssetPnL = useCallback(async (userAddress: string, asset: string): Promise<AssetPnLResult | null> => {
