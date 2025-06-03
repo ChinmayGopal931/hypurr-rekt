@@ -1,3 +1,4 @@
+// app/layout.tsx
 import { Inter } from 'next/font/google'
 import './globals.css'
 import '@rainbow-me/rainbowkit/styles.css'
@@ -17,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950`}>
+      <body className={`${inter.className} min-h-screen`}>
         <Providers>
           {children}
         </Providers>

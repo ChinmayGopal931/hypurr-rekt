@@ -1,9 +1,11 @@
+// app/page.tsx
 'use client'
 
 import { useState } from 'react'
 import { GameInterface } from '@/components/GameInterface'
 import { StatsPanel } from '@/components/StatsPanel'
 import { Header } from '@/components/GameHeader'
+import { DynamicBackground } from '@/components/Background'
 import { Prediction } from '@/lib/types'
 
 export type GameState = 'idle' | 'countdown' | 'active' | 'result'
@@ -33,8 +35,14 @@ export default function Home() {
 
   const [soundEnabled, setSoundEnabled] = useState(true)
 
+  // Determine if there's an active position
+  const hasActivePosition = currentPrediction !== null && (gameState === 'active' || gameState === 'countdown')
+
   return (
-    <div className="min-h-screen">
+    <DynamicBackground
+      hasActivePosition={hasActivePosition}
+      gameState={gameState}
+    >
       <Header
         gameStats={gameStats}
         soundEnabled={soundEnabled}
@@ -65,6 +73,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-    </div>
+    </DynamicBackground>
   )
 }

@@ -1,3 +1,5 @@
+/* Add these custom animations to your existing globals.css */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -116,28 +118,59 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
 }
 
-
 @layer base {
   :root {
-    --chart-1: 142 76% 36%; /* Green */
-    --chart-2: 173 58% 39%; 
-    --chart-3: 197 37% 24%; /* Blue */
-    --chart-4: 43 74% 66%;  /* Yellow */
-    --chart-5: 27 87% 67%;  /* Red */
+    --chart-1: 142 76% 36%;
+    /* Green */
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    /* Blue */
+    --chart-4: 43 74% 66%;
+    /* Yellow */
+    --chart-5: 27 87% 67%;
+    /* Red */
   }
+
   .dark {
-    --chart-1: 142 70% 45%; /* Green */
+    --chart-1: 142 70% 45%;
+    /* Green */
     --chart-2: 160 60% 45%;
-    --chart-3: 220 70% 50%; /* Blue */
-    --chart-4: 280 65% 60%; /* Yellow */
-    --chart-5: 0 84% 60%;   /* Red */
+    --chart-3: 220 70% 50%;
+    /* Blue */
+    --chart-4: 280 65% 60%;
+    /* Yellow */
+    --chart-5: 0 84% 60%;
+    /* Red */
   }
 }
 
+/* Custom animations for dynamic background */
+@layer utilities {
+  .bg-gradient-radial {
+    background: radial-gradient(circle, var(--tw-gradient-stops));
+  }
 
+  .bg-gradient-conic {
+    background: conic-gradient(var(--tw-gradient-stops));
+  }
 
+  .animate-spin-slow {
+    animation: spin 8s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
