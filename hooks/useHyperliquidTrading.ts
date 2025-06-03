@@ -1,6 +1,6 @@
 // src/hooks/hyperliquid/useHyperliquidOrders.ts
 import { useMutation, useQueryClient, UseMutationResult } from '@tanstack/react-query';
-import { useAccount, useSignTypedData, useSwitchChain } from 'wagmi';
+import { useSignTypedData, useSwitchChain } from 'wagmi';
 import { hyperliquidOrders } from '@/service/hyperliquidOrders';
 import {
     hyperliquidKeys,
@@ -11,6 +11,7 @@ import {
     OrderResponse, // Ensure this is imported or defined
     Asset, // For fetching current price from cache
 } from '@/lib/utils'; // Assuming shared.ts is in the same directory
+import { Address, Chain } from 'viem';
 
 export interface UseHyperliquidOrderMutations {
     placePredictionOrder: UseMutationResult<OrderResponse, Error, PlaceOrderParams, unknown>;
@@ -25,9 +26,8 @@ export interface UseHyperliquidOrdersReturn {
     isCancellingOrder: boolean;
 }
 
-export function useHyperliquidOrders(): UseHyperliquidOrdersReturn {
+export function useHyperliquidOrders(address: Address | undefined, isWalletConnected: boolean, chain: Chain | undefined): UseHyperliquidOrdersReturn {
     const queryClient = useQueryClient();
-    const { address, chain, isConnected: isWalletConnected } = useAccount();
     const { signTypedDataAsync } = useSignTypedData();
     const { switchChainAsync } = useSwitchChain();
 

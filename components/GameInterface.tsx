@@ -67,7 +67,7 @@ export function GameInterface({
   const [completionData, setCompletionData] = useState<CompletionData | null>(null)
   const [showSuccessFeedback, setShowSuccessFeedback] = useState(false)
 
-  const { address, isConnected: isWalletConnected } = useAccount()
+  const { address, isConnected: isWalletConnected, chain } = useAccount()
 
 
   // Main Hyperliquid hook with all functionality
@@ -85,7 +85,7 @@ export function GameInterface({
   const {
     mutations,
     placePredictionOrder
-  } = useHyperliquidOrders()
+  } = useHyperliquidOrders(address, isWalletConnected, chain)
 
 
 

@@ -482,28 +482,6 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
           </div>
         </motion.div>
       )}
-
-      {/* Time warning */}
-      <AnimatePresence>
-        {isLastSeconds && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{
-              opacity: 1,
-              scale: [1, 1.05, 1],
-              boxShadow: ['0 0 0 0 rgba(239, 68, 68, 0.7)', '0 0 0 10px rgba(239, 68, 68, 0)', '0 0 0 0 rgba(239, 68, 68, 0)']
-            }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{
-              scale: { duration: 0.6, repeat: Infinity, ease: "easeInOut" },
-              boxShadow: { duration: 1.2, repeat: Infinity, ease: "linear" } // Adjusted boxShadow animation
-            }}
-            className="text-center text-red-400 font-bold text-lg bg-red-500/20 p-3 rounded-lg border border-red-500/50" // Slightly reduced padding
-          >
-            ⚠️ TIME RUNNING OUT! ⚠️
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }
