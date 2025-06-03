@@ -455,46 +455,7 @@ export function GameInterface({
 
 
 
-  // Error state with detailed error information
-  if (error) {
-    // Error state with detailed error information (keep your existing error handling)
-    return (
-      <div className="space-y-6">
-        <Alert className="border-red-500/50 bg-red-500/10">
-          <AlertTriangle className="h-4 w-4 text-red-400" />
-          <AlertDescription className="text-red-400">
-            <div className="font-semibold mb-1">Connection Failed</div>
-            <div className="text-sm">Failed to connect to Hyperliquid: {error}</div>
-            {queries.assetMetadata.error && (
-              <div className="text-xs mt-1 text-red-300">
-                Metadata error: {queries.assetMetadata.error.message}
-              </div>
-            )}
-            {queries.priceData.error && (
-              <div className="text-xs mt-1 text-red-300">
-                Price feed error: {queries.priceData.error.message}
-              </div>
-            )}
-          </AlertDescription>
-        </Alert>
-        <Card className="p-8 bg-slate-900/50 border-slate-800">
-          <div className="text-center space-y-4">
-            <div className="text-slate-400">
-              Unable to load real-time market data.
-            </div>
-            <Button
-              onClick={handleRefresh}
-              variant="outline"
-              disabled={queries.assetMetadata.isRefetching || queries.priceData.isRefetching}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${queries.assetMetadata.isRefetching || queries.priceData.isRefetching ? 'animate-spin' : ''}`} />
-              Try Again
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+
 
   // No assets loaded
   if (!isInitialLoading && assets.length === 0) {
