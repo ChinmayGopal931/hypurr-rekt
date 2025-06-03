@@ -90,8 +90,8 @@ export function AgentStatus({ userAddress, isConnected }: AgentStatusProps) {
             <div className="space-y-2">
               <div className="font-semibold text-sm">About Trading Agents</div>
               <div className="text-xs">
-                Hyperliquid requires a special "agent wallet" to place orders.
-                When you place your first trade, we'll:
+                Hyperliquid requires a special &quot;agent wallet&quot; to place orders.
+                When you place your first trade, we&apos;ll:
               </div>
               <div className="text-xs space-y-1 ml-2">
                 <div>• Generate a secure agent wallet</div>

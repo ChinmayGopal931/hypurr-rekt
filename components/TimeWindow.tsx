@@ -2,7 +2,7 @@
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Clock, TrendingUp } from 'lucide-react'
-import { Asset } from '@/app/page'
+import { Asset } from '@/lib/types'
 
 interface CombinedSettingsSelectorProps {
   timeWindow: number
@@ -23,9 +23,7 @@ export function CombinedSettingsSelector({
   timeWindow,
   onTimeWindowSelect,
   leverage,
-  onLeverageChange,
   disabled,
-  selectedAsset
 }: CombinedSettingsSelectorProps) {
   const marginAmount = 10
 
