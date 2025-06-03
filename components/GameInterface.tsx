@@ -17,7 +17,7 @@ import { Button } from './ui/button'
 import { WalletConnection } from './WalletConnection'
 import { AgentStatus } from './AgentStatus'
 import { DepositRequiredAlert } from './DepositAlert'
-import { PriceSkeleton } from './PriceSkeleton'
+import { GameInterfaceSkeleton } from './PriceSkeleton'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { OrderRequest, OrderResponse } from '@/service/hyperliquidOrders'
 
@@ -354,13 +354,110 @@ export function GameInterface({
     }
   }, [gameState])
 
-  // Loading state with proper skeleton
-  if (queries.assetMetadata.isLoading || queries.priceData.isLoading) {
-    return <PriceSkeleton />
+  // MODIFIED LOADING LOGIC START
+  const isInitialLoading = queries.assetMetadata.isLoading || (queries.priceData.isLoading && assets.length === 0);
+
+  // Destructure query states for clarity
+  const { assetMetadata: assetMetadataQuery, priceData: priceDataQueryInfo } = queries;
+
+  // MODIFIED LOADING LOGIC START
+
+  // Determine if we should show the skeleton.
+  // Show skeleton if:
+  // 1. Metadata is still loading.
+  // 2. OR, metadata has loaded successfully, BUT:
+  //    a. The priceData query itself is in its 'isLoading' phase (e.g. initial fetch if any).
+  //    b. OR, the priceData query is NOT in an error state, AND the `assets` array is still empty.
+  //       This covers the crucial period where the WebSocket is connecting and hasn't pushed the initial assets yet.
+  const showSkeleton =
+    assetMetadataQuery.isLoading ||
+    (assetMetadataQuery.isSuccess &&
+      (priceDataQueryInfo.isLoading || // Covers if useQuery for priceData is actively running its queryFn
+        (!priceDataQueryInfo.isError && assets.length === 0) // Covers waiting for WebSocket when queryFn is done but no assets yet
+      )
+    );
+
+  if (showSkeleton) {
+    return <GameInterfaceSkeleton />;
   }
+
+  // Error Condition (after skeleton check):
+  // This `combinedErrorFromHook` is (assetMetadataQuery.error || priceDataQuery.error) from useHyperliquid.
+  // It will be true if either metadata fetching failed or price data fetching/processing failed.
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Alert className="border-red-500/50 bg-red-500/10">
+          <AlertTriangle className="h-4 w-4 text-red-400" />
+          <AlertDescription className="text-red-400">
+            <div className="font-semibold mb-1">Connection Failed</div>
+            {/* Display the actual error message from the hook */}
+            <div className="text-sm">
+              {typeof error === 'string' ? error :
+                (error as Error)?.message || 'An unknown connection error occurred.'}
+            </div>
+            {/* Specific query errors if available and not redundant */}
+            {assetMetadataQuery.error && assetMetadataQuery.error.message !== (error as unknown as Error)?.message && (
+              <div className="text-xs mt-1 text-red-300">
+                Metadata error: {assetMetadataQuery.error.message}
+              </div>
+            )}
+            {priceDataQueryInfo.error && priceDataQueryInfo.error.message !== (error as unknown as Error)?.message && (
+              <div className="text-xs mt-1 text-red-300">
+                Price feed error: {priceDataQueryInfo.error.message}
+              </div>
+            )}
+          </AlertDescription>
+        </Alert>
+        <Card className="p-8 bg-slate-900/50 border-slate-800">
+          <div className="text-center space-y-4">
+            <div className="text-slate-400">
+              Unable to load real-time market data.
+            </div>
+            <Button
+              onClick={handleRefresh} // Assuming handleRefresh is defined
+              variant="outline"
+              disabled={assetMetadataQuery.isRefetching || priceDataQueryInfo.isRefetching}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${assetMetadataQuery.isRefetching || priceDataQueryInfo.isRefetching ? 'animate-spin' : ''}`} />
+              Try Again
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // No Assets Condition (after skeleton and error checks):
+  // At this point:
+  // - Not showing skeleton (implies metadata is loaded, and we're not in the initial phase of waiting for prices/assets via WebSocket).
+  // - No `combinedErrorFromHook` that would render the error display above.
+  // So, if `assets` is still empty, it means no tradable assets were found or streamed after everything settled.
+  if (assets.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-8 bg-slate-900/50 border-slate-800">
+          <div className="text-center space-y-4">
+            <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto" />
+            <div className="text-white text-lg font-semibold">No Trading Assets Available</div>
+            <div className="text-slate-400 text-sm">
+              Could not fetch any assets from Hyperliquid, or none are currently tradable. Please try refreshing.
+            </div>
+            <Button onClick={handleRefresh} variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+
 
   // Error state with detailed error information
   if (error) {
+    // Error state with detailed error information (keep your existing error handling)
     return (
       <div className="space-y-6">
         <Alert className="border-red-500/50 bg-red-500/10">
@@ -380,7 +477,6 @@ export function GameInterface({
             )}
           </AlertDescription>
         </Alert>
-
         <Card className="p-8 bg-slate-900/50 border-slate-800">
           <div className="text-center space-y-4">
             <div className="text-slate-400">
@@ -397,17 +493,20 @@ export function GameInterface({
           </div>
         </Card>
       </div>
-    )
+    );
   }
 
   // No assets loaded
-  if (assets.length === 0) {
+  if (!isInitialLoading && assets.length === 0) {
     return (
       <div className="space-y-6">
         <Card className="p-8 bg-slate-900/50 border-slate-800">
           <div className="text-center space-y-4">
             <AlertTriangle className="w-8 h-8 text-yellow-400 mx-auto" />
             <div className="text-white text-lg font-semibold">No Trading Assets Available</div>
+            <div className="text-slate-400 text-sm">
+              Could not fetch any assets from Hyperliquid. Please try refreshing.
+            </div>
             <Button onClick={handleRefresh} variant="outline">
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
@@ -415,7 +514,7 @@ export function GameInterface({
           </div>
         </Card>
       </div>
-    )
+    );
   }
 
   return (
