@@ -2,13 +2,12 @@
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Clock, TrendingUp } from 'lucide-react'
-import { Asset } from '@/app/page'
+import { Asset } from '@/lib/types'
 
 interface CombinedSettingsSelectorProps {
   timeWindow: number
   onTimeWindowSelect: (window: number) => void
   leverage: number
-  onLeverageChange: (leverage: number) => void
   disabled?: boolean
   selectedAsset?: Asset | null
 }
@@ -23,11 +22,8 @@ export function CombinedSettingsSelector({
   timeWindow,
   onTimeWindowSelect,
   leverage,
-  onLeverageChange,
   disabled,
-  selectedAsset
 }: CombinedSettingsSelectorProps) {
-  const leverageOptions = [10, 20, 30, 40]
   const marginAmount = 10
 
   return (
@@ -80,48 +76,11 @@ export function CombinedSettingsSelector({
           </Badge>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
-          {leverageOptions.map(option => {
-            const positionValue = marginAmount * option
-            const isMaxForBTC = selectedAsset?.id === 'BTC' && option > 40
-            const isMaxForETH = selectedAsset?.id === 'ETH' && option > 25
-            const isDisabled = disabled || isMaxForBTC || isMaxForETH
-
-            return (
-              <button
-                key={option}
-                onClick={() => onLeverageChange(option)}
-                disabled={isDisabled}
-                className={`px-2 py-3 rounded text-sm font-medium transition-colors relative group ${leverage === option
-                  ? 'bg-blue-500 text-white'
-                  : isDisabled
-                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-                  }`}
-              >
-                <div className="text-center">
-                  <div>{option}x</div>
-                  <div className="text-xs opacity-75">${positionValue}</div>
-                </div>
-
-                {/* Tooltip */}
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                  ${positionValue} position
-                  {isMaxForBTC && <div className="text-red-400">Max for BTC</div>}
-                  {isMaxForETH && <div className="text-red-400">Max for ETH</div>}
-                </div>
-              </button>
-            )
-          })}
-        </div>
 
         <div className="text-xs text-slate-400 space-y-1">
           <div className="flex justify-between">
             <span>Position Value:</span>
             <span className="text-blue-400">${marginAmount * leverage}</span>
-          </div>
-          <div className="text-center text-orange-400 font-medium">
-            Risk $10 margin to control ${marginAmount * leverage} position
           </div>
         </div>
       </div>
@@ -129,8 +88,7 @@ export function CombinedSettingsSelector({
       {/* Summary */}
       <div className="bg-slate-800/30 rounded-lg p-3 text-center">
         <div className="text-sm text-slate-400">
-          Predict <span className="text-white font-semibold">{timeWindow}s</span> price movement with{' '}
-          <span className="text-blue-400 font-semibold">{leverage}x</span> leverage
+          Guess the price direction using {leverage}x leverage
         </div>
       </div>
     </div>

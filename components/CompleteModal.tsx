@@ -15,8 +15,9 @@ import {
   BarChart3,
   Image as ImageIcon // Added for generate image button
 } from 'lucide-react';
-import { Prediction, GameStats } from '@/app/page';
+import { GameStats } from '@/app/page';
 import { render } from "./share_trade/render"// Import the render function from your image generation module
+import { Prediction } from '@/lib/types';
 
 interface GameCompletionModalProps {
   isOpen: boolean;
@@ -88,7 +89,7 @@ export function GameCompletionModal({
     setGenerationError(null);
 
     const pnlPercentage = isWin ? percentageMove : -percentageMove;
-    const refCodeToUse = "TIGRISGIRL"; // Hardcoded ref code
+    const refCodeToUse = "HYPURR-REKT"; // Hardcoded ref code
 
     const params = {
       pnlRatio: pnlPercentage, // e.g. 10.5 for 10.5% win, -5.2 for 5.2% loss
@@ -136,8 +137,7 @@ export function GameCompletionModal({
 
   return (
     <AnimatePresence>
-      diwndinwdiwndni
-      {true && (
+      {isOpen && (
         <Dialog open={isOpen} onOpenChange={onClose}>
           <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700 overflow-hidden">
             <DialogTitle className="text-slate-200">Game Completed</DialogTitle>
@@ -309,9 +309,7 @@ export function GameCompletionModal({
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-2 mb-3"
                   >
-                    <h4 className="text-center text-slate-300 mb-2 text-sm">Your Trade Summary Image:</h4>
                     <img src={shareableImageUrl} alt="Trade Summary" className="rounded-lg border border-slate-700 mx-auto" />
-                    <p className="text-xs text-slate-500 text-center mt-1">Right-click or long-press to save.</p>
                   </motion.div>
                 )}
               </motion.div>

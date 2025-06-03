@@ -1,7 +1,7 @@
 // src/components/AssetSelector.tsx
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { TrendingUp, TrendingDown } from 'lucide-react'
+import { TrendingUp, TrendingDown, Zap } from 'lucide-react'
 import { Asset } from '@/lib/types'
 
 interface AssetSelectorProps {
@@ -26,6 +26,9 @@ export function AssetSelector({ assets, selectedAsset, onAssetSelect, disabled }
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-white">Select Asset</h3>
+      <div className="text-sm text-slate-400">
+        Top {assets.length} assets by maximum leverage
+      </div>
 
       <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto">
         {assets.map((asset) => (
@@ -49,36 +52,49 @@ export function AssetSelector({ assets, selectedAsset, onAssetSelect, disabled }
               </div>
             </div>
 
-            <div className="text-right">
+            <div className="text-right space-y-1">
               <div className="font-mono text-white">
                 ${asset.price.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: asset.price > 1000 ? 2 : 4
                 })}
               </div>
-              <Badge
-                variant="outline"
-                className={`
-                  ${asset.change24h >= 0
-                    ? 'text-green-400 border-green-400'
-                    : 'text-red-400 border-red-400'
-                  }
-                `}
-              >
-                {asset.change24h >= 0 ? (
-                  <TrendingUp className="w-3 h-3 mr-1" />
-                ) : (
-                  <TrendingDown className="w-3 h-3 mr-1" />
-                )}
-                {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(1)}%
-              </Badge>
+
+              <div className="flex items-center justify-end space-x-2">
+                {/* Max Leverage Badge */}
+                <Badge
+                  variant="outline"
+                  className="text-orange-400 border-orange-400 bg-orange-400/10"
+                >
+                  <Zap className="w-3 h-3 mr-1" />
+                  {asset.maxLeverage}x
+                </Badge>
+
+                {/* 24h Change Badge */}
+                <Badge
+                  variant="outline"
+                  className={`
+                    ${asset.change24h >= 0
+                      ? 'text-green-400 border-green-400 bg-green-400/10'
+                      : 'text-red-400 border-red-400 bg-red-400/10'
+                    }
+                  `}
+                >
+                  {asset.change24h >= 0 ? (
+                    <TrendingUp className="w-3 h-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="w-3 h-3 mr-1" />
+                  )}
+                  {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(1)}%
+                </Badge>
+              </div>
             </div>
           </Button>
         ))}
       </div>
 
       <div className="text-xs text-slate-400 text-center">
-        {assets.length} assets available • Real-time prices
+        {assets.length} highest leverage assets • Real-time prices
       </div>
     </div>
   )

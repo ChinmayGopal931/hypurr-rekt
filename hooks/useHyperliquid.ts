@@ -3,8 +3,9 @@ import { useQuery, useQueryClient, UseQueryResult } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { hyperliquid, HyperliquidAsset, OrderBook } from '@/service/hyperliquid'
 import { hyperliquidOrders, PositionInfo, RealTimePnLData } from '@/service/hyperliquidOrders'
-import { Asset, getRealTimePnL, handleApiError, hyperliquidKeys, PriceHistory, processOrderBook, useAssetMetadata } from '@/lib/utils'
+import { getRealTimePnL, handleApiError, hyperliquidKeys, PriceHistory, processOrderBook, useAssetMetadata } from '@/lib/utils'
 import { useOrderBook, usePriceData } from './useHyperliquidSubscription'
+import { Asset } from '@/lib/types'
 
 
 export interface PositionSizeResult {
