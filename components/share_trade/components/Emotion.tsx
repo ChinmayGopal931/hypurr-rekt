@@ -1,6 +1,5 @@
 import React from "react";
 
-import { HAPPY_PEPE, SAD_PEPE } from "../images";
 
 export const Emotion = (props: { pnlRatio: number }) => {
   const { pnlRatio } = props;
@@ -16,7 +15,7 @@ export const Emotion = (props: { pnlRatio: number }) => {
         left: pnlRatio < 0 ? "615px" : "618px"
       }}
     >
-      <img src={pnlRatio > 0 ? HAPPY_PEPE : SAD_PEPE} width={320} height={320} style={{ borderRadius: "100%" }} />
+      <img src={pnlRatio > 0 ? "/assets/images/cash.png" : "/assets/images/cash.png"} width={320} height={320} style={{ borderRadius: "100%" }} />
     </div>
-  );
+  )
 };

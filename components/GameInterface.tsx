@@ -474,22 +474,49 @@ export function GameInterface({
     );
   }
 
+
+  const completionData2 = {
+    prediction: {
+      id: '1',
+      asset: {
+        id: 'BTC',
+        name: 'Bitcoin',
+        symbol: 'BTC',
+        price: 100000,
+        change: 0.01,
+        changePercent: 0.01,
+        volume: 100000,
+        marketCap: 1000000000,
+        logo: '/assets/images/btc.png',
+        color: '#FFC107',
+        change24h: 0,
+        changePercent24h: 0,
+        isFiat: false
+      },
+      direction: 'up',
+      entryPrice: 100000,
+      timeWindow: 30,
+      timestamp: Date.now()
+    },
+    exitPrice: 100000,
+    leverage: 40,
+    positionValue: 100000
+  }
   return (
     <div className="space-y-6" onClick={clearError}>
       {/* Game Completion Modal */}
-      {true && completionData && (
+      {true && completionData2 && (
         <GameCompletionModal
-          isOpen={showCompletionModal}
+          isOpen={true}
           onClose={handleModalClose}
           onPlayAgain={handlePlayAgain}
-          prediction={completionData.prediction}
-          actualExitPrice={completionData.exitPrice}
+          prediction={completionData2.prediction as Prediction}
+          actualExitPrice={completionData2.exitPrice}
           gameStats={gameStats}
-          leverage={completionData.leverage}
-          positionValue={completionData.positionValue}
+          leverage={completionData2.leverage}
+          positionValue={completionData2.positionValue}
         />
       )}
-
       {/* Success Feedback Animation */}
       <AnimatePresence>
         {showSuccessFeedback && (
