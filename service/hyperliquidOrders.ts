@@ -3,6 +3,8 @@ import { ethers } from 'ethers'
 import { hyperliquid } from './hyperliquid'
 import { hyperliquidAgent, AgentWallet } from './hyperLiquidAgent'
 import { calculateOrderSizeWithTrueLeverage, checkUserAccount, formatPrice, generateCloid, getAssetConfig, getRealTimePnL } from '@/lib/utils'
+const { privateKeyToAccount } = await import('viem/accounts');
+const { signL1Action } = await import('@nktkas/hyperliquid/signing')
 
 export interface OrderRequest {
   asset: string
@@ -318,8 +320,6 @@ export class HyperliquidOrderService {
       }
 
       // Sign and send close order
-      const { signL1Action } = await import('@nktkas/hyperliquid/signing')
-      const { privateKeyToAccount } = await import('viem/accounts')
 
       const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`)
 
@@ -586,10 +586,6 @@ export class HyperliquidOrderService {
         throw new Error('Agent wallet not available for leverage setting')
       }
 
-      // Sign the leverage update action
-      const { signL1Action } = await import('@nktkas/hyperliquid/signing')
-      const { privateKeyToAccount } = await import('viem/accounts')
-
       const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`)
 
       console.log('🔐 Signing leverage update...')
@@ -837,10 +833,6 @@ export class HyperliquidOrderService {
         const nonce = Date.now();
         console.log(`⏱️ Using timestamp as nonce: ${nonce}`);
         console.log('📊 Aggressive limit order created:', JSON.stringify(order, null, 2));
-
-        // Import the signing function from the SDK
-        const { signL1Action } = await import('@nktkas/hyperliquid/signing');
-        const { privateKeyToAccount } = await import('viem/accounts');
 
         // Get the agent wallet
         const agentWallet = await this.initializeAgent(address, signTypedDataAsync);
