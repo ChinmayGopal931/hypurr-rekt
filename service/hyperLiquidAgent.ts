@@ -2,8 +2,12 @@
 // src/services/hyperliquidAgent.ts
 import { ethers } from 'ethers'
 import * as hl from '@nktkas/hyperliquid'
-import { HyperliquidSignature } from './hyperliquidOrders'
 
+interface HyperliquidSignature {
+  r: string
+  s: string
+  v: number
+}
 type ExchangeClient = hl.ExchangeClient
 
 export interface AgentWallet {
