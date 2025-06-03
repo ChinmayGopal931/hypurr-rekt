@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Progress } from './ui/progress'
-import { Clock, Target, TrendingUp, TrendingDown, DollarSign, Loader2, Zap, Flame, Trophy, AlertCircle } from 'lucide-react'
+import { Button } from './ui/button' // Added Button import
+import { Clock, Target, TrendingUp, TrendingDown, DollarSign, Loader2, Zap, Flame, Trophy, AlertCircle, Eye, EyeOff } from 'lucide-react' // Added Eye and EyeOff icons
 import { Prediction } from '@/app/page'
 import { useHyperliquid, useRealTimePnL, useAssetPnL } from '@/hooks/useHyperliquid'
 import { OrderBook } from '@/components/OrderBook'
@@ -43,6 +44,7 @@ interface FallbackPnLData {
 export function GameTimer({ initialTime, onComplete, type, prediction, currentPrice }: GameTimerProps) {
   const [timeLeft, setTimeLeft] = useState(initialTime)
   const [isActive, setIsActive] = useState(true)
+  const [showOrderBook, setShowOrderBook] = useState(false) // State for OrderBook visibility
   const [realTimePnL, setRealTimePnL] = useState<RealTimePnLState>({
     unrealizedPnl: 0,
     returnOnEquity: 0,
@@ -150,7 +152,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 positionValue: 0,
                 isLoading: false,
                 lastUpdate: Date.now(),
-                error: null
+                error: null // Or consider a specific error if assetPnLQuery.isError is true
               }))
             }
           } catch (error: unknown) {
@@ -169,8 +171,10 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
       pnlPollingRef.current = stopPolling
 
       return () => {
-        stopPolling()
-        pnlPollingRef.current = null
+        if (pnlPollingRef.current) {
+          pnlPollingRef.current()
+          pnlPollingRef.current = null
+        }
       }
     } catch (error: unknown) {
       const errorMessage = handlePnLError(error)
@@ -182,6 +186,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
       }))
     }
   }, [type, prediction, address, isWalletConnected, startPnLPolling, assetPnLQuery.data, handlePnLError])
+
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -199,10 +204,12 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
 
   // Fallback to price-based calculation if real P&L is not available
   const getFallbackPnL = useCallback((): FallbackPnLData | null => {
-    if (!prediction || !currentPrice) return null
+    if (!prediction || typeof currentPrice === 'undefined') return null
 
     const priceDiff = currentPrice - prediction.entryPrice
-    const percentage = (priceDiff / prediction.entryPrice) * 100
+    // Avoid division by zero if entryPrice is 0 (though unlikely for crypto assets)
+    const percentage = prediction.entryPrice !== 0 ? (priceDiff / prediction.entryPrice) * 100 : 0;
+
 
     const isWinning =
       (prediction.direction === 'up' && priceDiff > 0) ||
@@ -217,7 +224,7 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
 
   // Determine which P&L to show with proper typing
   const getPnLDisplay = useCallback((): PnLDisplayData | null => {
-    if (realTimePnL.lastUpdate && !realTimePnL.error) {
+    if (realTimePnL.lastUpdate && !realTimePnL.error && assetPnLQuery.isSuccess) { // Ensure assetPnLQuery was successful
       const isWinning = realTimePnL.unrealizedPnl > 0
       const isLosing = realTimePnL.unrealizedPnl < 0
 
@@ -239,10 +246,10 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         isWinning: fallback.isWinning,
         isLosing: fallback.isLosing,
         isReal: false,
-        isLoading: false
+        isLoading: realTimePnL.isLoading // Reflect loading state even for fallback if PnL is being fetched
       }
     }
-  }, [realTimePnL, getFallbackPnL])
+  }, [realTimePnL, getFallbackPnL, assetPnLQuery.isSuccess])
 
   const pnlDisplay = getPnLDisplay()
 
@@ -303,14 +310,48 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         )}
       </div>
 
-      {/* Real-time Order Book */}
+      {/* Button to toggle Order Book */}
       {prediction && (
-        <OrderBook
-          coin={prediction.asset.id}
-          currentPrice={currentPrice}
-          isWinning={isWinning}
-        />
+        <div className="text-center my-3">
+          <Button
+            variant="link"
+            onClick={() => setShowOrderBook(prev => !prev)}
+            className="text-blue-400 hover:text-blue-300 px-2 py-1 text-sm"
+          >
+            {showOrderBook ? (
+              <>
+                <EyeOff className="inline-block w-4 h-4 mr-1 align-middle" />
+                Hide Market Depth
+              </>
+            ) : (
+              <>
+                <Eye className="inline-block w-4 h-4 mr-1 align-middle" />
+                View Market Depth
+              </>
+            )}
+          </Button>
+        </div>
       )}
+
+      {/* Conditionally Rendered Real-time Order Book with Animation */}
+      <AnimatePresence>
+        {prediction && showOrderBook && (
+          <motion.div
+            key="orderbook-motion"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginTop: '1rem' }} // Use 1rem for consistency with space-y-6 if it implies 1.5rem, or adjust as needed.
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="overflow-hidden" // Crucial for height animation
+          >
+            <OrderBook
+              coin={prediction.asset.id}
+              currentPrice={currentPrice}
+              isWinning={isWinning}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Timer Display */}
       <div className="text-center">
@@ -329,17 +370,19 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
           value={progressPercent}
           className={`
             h-3 mb-4
-            ${isLastSeconds ? 'bg-red-900' : 'bg-slate-700'}
+            ${isLastSeconds ? 'bg-red-900 progress-bar-red' : 'bg-slate-700 progress-bar-blue'} 
           `}
+          indicatorClassName={isLastSeconds ? 'bg-red-500' : 'bg-blue-500'} // Assuming Progress component can take indicatorClassName
         />
       </div>
 
       {/* Enhanced P&L Display with Error Handling */}
       {pnlDisplay && (
         <motion.div
-          key={`${pnlDisplay.isWinning}-${pnlDisplay.value}`}
-          initial={{ scale: 1.1 }}
-          animate={{ scale: 1 }}
+          key={`${pnlDisplay.isWinning}-${pnlDisplay.value.toFixed(2)}-${pnlDisplay.isReal}`} // More robust key
+          initial={{ opacity: 0.8, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
           className={`
             text-center p-6 rounded-xl border-2 transition-all duration-300
             ${pnlDisplay.isWinning ? 'border-green-500/50 bg-green-500/10' :
@@ -357,8 +400,8 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
             )}
             <div className="text-slate-400 text-sm">
               {pnlDisplay.isReal ? 'Live P&L' : 'Estimated P&L'}
-              {realTimePnL.lastUpdate && !realTimePnL.error && (
-                <span className="ml-2 text-xs text-green-400">
+              {pnlDisplay.isReal && realTimePnL.lastUpdate && !realTimePnL.error && (
+                <span className="ml-1 text-xs text-green-400/80">
                   ● Live
                 </span>
               )}
@@ -385,8 +428,8 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
 
           {/* Status with animated emoji */}
           <motion.div
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ duration: 1, repeat: Infinity }}
+            animate={{ scale: pnlDisplay.isWinning || pnlDisplay.isLosing ? [1, 1.05, 1] : 1 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
             className={`
               text-lg font-medium flex items-center justify-center space-x-2
               ${pnlDisplay.isWinning ? 'text-green-400' : pnlDisplay.isLosing ? 'text-red-400' : 'text-slate-400'}
@@ -403,34 +446,35 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
                 <span>💔 LOSING</span>
               </>
             ) : (
-              <span>BREAK EVEN</span>
+              <span>NEUTRAL</span>
             )}
           </motion.div>
 
           {/* Data source indicator and error messages */}
-          <div className="mt-2 space-y-1">
-            {!pnlDisplay.isReal && !realTimePnL.isLoading && (
-              <div className="text-xs text-slate-500">
-                Calculated from price movement
+          <div className="mt-2 space-y-1 text-xs">
+            {!pnlDisplay.isReal && !realTimePnL.isLoading && !realTimePnL.error && (
+              <div className="text-slate-500">
+                Based on current price vs entry
               </div>
             )}
 
             {realTimePnL.error && (
-              <div className="text-xs text-red-400 flex items-center justify-center space-x-1">
+              <div className="text-red-400 flex items-center justify-center space-x-1">
                 <AlertCircle className="w-3 h-3" />
                 <span>P&L data error: {realTimePnL.error}</span>
               </div>
             )}
 
-            {pnlQuery.error && (
-              <div className="text-xs text-yellow-400">
-                Warning: Real-time P&L unavailable
+            {/* Display hook-level errors if they are distinct or provide more info */}
+            {pnlQuery.error && (!realTimePnL.error || pnlQuery.error.message !== realTimePnL.error) && (
+              <div className="text-yellow-500/80">
+                Warning: Real-time P&L unavailable ({pnlQuery.error.message})
               </div>
             )}
 
-            {assetPnLQuery.error && (
-              <div className="text-xs text-yellow-400">
-                Warning: Asset P&L unavailable
+            {assetPnLQuery.error && (!realTimePnL.error || assetPnLQuery.error.message !== realTimePnL.error) && (
+              <div className="text-yellow-500/80">
+                Warning: Asset P&L unavailable ({assetPnLQuery.error.message})
               </div>
             )}
           </div>
@@ -445,14 +489,14 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
             animate={{
               opacity: 1,
               scale: [1, 1.05, 1],
-              boxShadow: ['0 0 0 0 rgba(239, 68, 68, 0.7)', '0 0 0 20px rgba(239, 68, 68, 0)', '0 0 0 0 rgba(239, 68, 68, 0)']
+              boxShadow: ['0 0 0 0 rgba(239, 68, 68, 0.7)', '0 0 0 10px rgba(239, 68, 68, 0)', '0 0 0 0 rgba(239, 68, 68, 0)']
             }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{
-              scale: { duration: 0.6, repeat: Infinity },
-              boxShadow: { duration: 1.5, repeat: Infinity }
+              scale: { duration: 0.6, repeat: Infinity, ease: "easeInOut" },
+              boxShadow: { duration: 1.2, repeat: Infinity, ease: "linear" } // Adjusted boxShadow animation
             }}
-            className="text-center text-red-400 font-bold text-lg bg-red-500/20 p-4 rounded-lg border border-red-500/50"
+            className="text-center text-red-400 font-bold text-lg bg-red-500/20 p-3 rounded-lg border border-red-500/50" // Slightly reduced padding
           >
             ⚠️ TIME RUNNING OUT! ⚠️
           </motion.div>

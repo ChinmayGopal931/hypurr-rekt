@@ -8,8 +8,11 @@ import { cn } from "@/lib/utils"
 function Progress({
   className,
   value,
+  indicatorClassName,
   ...props
-}: React.ComponentProps<typeof ProgressPrimitive.Root>) {
+}: React.ComponentProps<typeof ProgressPrimitive.Root> & {
+  indicatorClassName?: string
+}) {
   return (
     <ProgressPrimitive.Root
       data-slot="progress"
@@ -21,7 +24,10 @@ function Progress({
     >
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
-        className="bg-primary h-full w-full flex-1 transition-all"
+        className={cn( // Use cn to conditionally apply classes
+          "h-full w-full flex-1 transition-all",
+          indicatorClassName // This will be merged with the default classes
+        )}
         style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
       />
     </ProgressPrimitive.Root>

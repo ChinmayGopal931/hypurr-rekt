@@ -453,10 +453,6 @@ export function GameInterface({
     );
   }
 
-
-
-
-
   // No assets loaded
   if (!isInitialLoading && assets.length === 0) {
     return (
