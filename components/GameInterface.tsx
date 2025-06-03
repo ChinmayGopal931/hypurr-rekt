@@ -477,7 +477,7 @@ export function GameInterface({
   return (
     <div className="space-y-6" onClick={clearError}>
       {/* Game Completion Modal */}
-      {showCompletionModal && completionData && (
+      {true && completionData && (
         <GameCompletionModal
           isOpen={showCompletionModal}
           onClose={handleModalClose}

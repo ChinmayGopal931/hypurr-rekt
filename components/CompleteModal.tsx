@@ -136,7 +136,8 @@ export function GameCompletionModal({
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      diwndinwdiwndni
+      {true && (
         <Dialog open={isOpen} onOpenChange={onClose}>
           <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700 overflow-hidden">
             <DialogTitle className="text-slate-200">Game Completed</DialogTitle>

@@ -92,7 +92,6 @@ export const render = async (params: {
     const svg = await satori(
       <>
         <Background />
-        <Logo />
         <Emotion pnlRatio={pnlRatio} />
         <LeverageBadge leverage={leverage} isShort={!isLong} />
         <LeveragePairDivider />
