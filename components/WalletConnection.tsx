@@ -327,7 +327,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
             <div className="space-y-2">
               <div className="font-semibold">Testnet Trading</div>
               <div className="text-sm">
-                This app uses Hyperliquid testnet. You&apos;ll need testnet ETH on Arbitrum Sepolia.
+                This app uses Hyperliquid testnet. You&apos;ll need to switch to Arbitrum Sepolia to sign transactions.
               </div>
               <a
                 href="https://faucet.arbitrum.io/"

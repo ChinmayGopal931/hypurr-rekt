@@ -14,8 +14,8 @@ export function DepositRequiredAlert({ userAddress, onDismiss }: DepositRequired
     window.open('https://app.hyperliquid-testnet.xyz', '_blank')
   }
 
-  const handleGetTestnetEth = () => {
-    window.open('https://faucet.arbitrum.io/', '_blank')
+  const handleGetHyperliquidFunds = () => {
+    window.open('https://app.hyperliquid-testnet.xyz/drip', '_blank')
   }
 
   const copyAddress = async () => {
@@ -35,7 +35,7 @@ export function DepositRequiredAlert({ userAddress, onDismiss }: DepositRequired
           <div>
             <div className="font-semibold mb-2">Deposit Required</div>
             <div className="text-sm">
-              You need to deposit funds to YOUR wallet address on Hyperliquid Testnet
+              You will need to deposit testnet funds into your Hyperliquid account
               before you can approve the trading agent. This is a one-time requirement.
             </div>
           </div>
@@ -66,17 +66,17 @@ export function DepositRequiredAlert({ userAddress, onDismiss }: DepositRequired
             <div className="space-y-2 ml-2">
               <div className="flex items-center justify-between bg-yellow-500/20 p-3 rounded">
                 <div>
-                  <div className="font-medium text-xs">Step 1: Get Testnet ETH</div>
-                  <div className="text-xs opacity-75">Free testnet ETH from Arbitrum faucet</div>
+                  <div className="font-medium text-xs">Step 1: Get Hyperliquid Testnet Funds</div>
+                  <div className="text-xs opacity-75">Free testnet funds from Hyperliquid faucet</div>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={handleGetTestnetEth}
+                  onClick={handleGetHyperliquidFunds}
                   className="text-yellow-400 border-yellow-400 hover:bg-yellow-400/10"
                 >
                   <ExternalLink className="w-3 h-3 mr-1" />
-                  Get ETH
+                  Get Funds
                 </Button>
               </div>
 
