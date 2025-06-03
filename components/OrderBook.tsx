@@ -164,7 +164,7 @@ export function OrderBook({ coin, currentPrice, isWinning }: OrderBookProps) {
                         </span>
                     </div>
                     <div className="space-y-0.5">
-                        {processedData.asks.slice(0, 10).reverse().map((ask, index) => (
+                        {processedData.asks.slice(0, 5).reverse().map((ask, index) => (
                             <OrderLevelRow
                                 key={`ask-${ask.price}`}
                                 level={ask}
@@ -208,7 +208,7 @@ export function OrderBook({ coin, currentPrice, isWinning }: OrderBookProps) {
                         </span>
                     </div>
                     <div className="space-y-0.5">
-                        {processedData.bids.slice(0, 10).map((bid, index) => (
+                        {processedData.bids.slice(0, 5).map((bid, index) => (
                             <OrderLevelRow
                                 key={`bid-${bid.price}`}
                                 level={bid}
