@@ -18,6 +18,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@rainbow-me/rainbowkit": "^2.2.5",
     "@tanstack/react-query": "^5.79.0",
+    "@tanstack/react-query-devtools": "^5.79.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "ethers": "^6.14.3",
