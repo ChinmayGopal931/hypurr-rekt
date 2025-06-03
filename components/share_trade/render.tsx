@@ -4,7 +4,6 @@ import satori from 'satori';
 // import QRCode from 'qrcode';
 
 // Assuming these components are correctly defined and imported within this module's scope
-import { Logo } from './components/Logo';
 import { LeverageBadge } from './components/LeverageBadge';
 import { TradingPair } from './components/TradingPair';
 import { PnlHero } from './components/PnlHero';
