@@ -109,8 +109,8 @@ export default function LandingPage() {
               {/* Left Side - Content */}
               <div className="space-y-8">
                 <div className="space-y-4">
-                  <div className="text-emerald-400 font-semibold text-sm">
-                    Leaderboard coming soon!
+                  <div className="text-emerald-400 font-semibold text-lg">
+                    Quick Crypto Trades
                   </div>
                   <h1 className="text-5xl lg:text-7xl font-black leading-tight">
                     <span className="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
@@ -119,33 +119,50 @@ export default function LandingPage() {
                     <span className="text-white">BETS</span>
                   </h1>
                   <p className="text-xl text-slate-300 leading-relaxed">
-                    Pick any crypto. Go long or short. See what happens in 14, 30, or 60 seconds.
-                    <span className="text-emerald-400 font-semibold"> Simple as that.</span>
+                    Pick any crypto from Hyperliquid&apos;s full asset list. Go long or short with maximum leverage. Watch live orderbook data while your trade runs for 14, 30, or 60 seconds.
                   </p>
                 </div>
 
                 {/* Features */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
-                    <div className="w-12 h-12 mx-auto mb-2">
+                    <div className="w-8 h-8 mx-auto mb-2">
                       <img src="/assets/images/hypurr/liquid.png" alt="Speed" className="w-full h-full object-contain" />
                     </div>
                     <div className="font-semibold text-emerald-400">14-60 Seconds</div>
                     <div className="text-sm text-slate-400">Quick trades</div>
                   </div>
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
-                    <div className="w-12 h-12 mx-auto mb-2">
+                    <div className="w-8 h-8 mx-auto mb-2">
                       <img src="/assets/images/hypurr/crystalball.png" alt="Assets" className="w-full h-full object-contain" />
                     </div>
-                    <div className="font-semibold text-emerald-400">Any Asset</div>
-                    <div className="text-sm text-slate-400">BTC, ETH, SOL & more</div>
+                    <div className="font-semibold text-emerald-400">All HL Assets</div>
+                    <div className="text-sm text-slate-400">Full Hyperliquid catalog</div>
                   </div>
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
-                    <div className="w-12 h-12 mx-auto mb-2">
+                    <div className="w-8 h-8 mx-auto mb-2">
                       <img src="/assets/images/hypurr/theories.png" alt="Leverage" className="w-full h-full object-contain" />
                     </div>
-                    <div className="font-semibold text-emerald-400">Leverage</div>
-                    <div className="text-sm text-slate-400">Hyperliquid powered</div>
+                    <div className="font-semibold text-emerald-400">Max Leverage</div>
+                    <div className="text-sm text-slate-400">Highest possible for each asset</div>
+                  </div>
+                </div>
+
+                {/* Additional Features */}
+                <div className="bg-slate-900/30 border border-emerald-500/10 rounded-xl p-6">
+                  <div className="flex items-center justify-center space-x-6 text-sm text-slate-300">
+                    <div className="flex items-center space-x-2">
+                      <img src="/assets/images/hypurr/purrfessor.png" alt="Live Data" className="w-5 h-5" />
+                      <span>Live orderbook display</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <img src="/assets/images/hypurr/samurai.png" alt="Testnet Funds" className="w-5 h-5" />
+                      <span>Get testnet funds from HL</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <img src="/assets/images/hypurr/throne.png" alt="Leaderboard" className="w-5 h-5" />
+                      <span>Leaderboard coming soon</span>
+                    </div>
                   </div>
                 </div>
 
