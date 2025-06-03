@@ -4,7 +4,6 @@ import { Card } from './ui/card'
 import { AssetSelector } from './AssetSelector'
 import { PriceDisplay } from './PriceDisplay'
 import { GameTimer } from './GameTimer'
-import { GameState, GameStats } from '@/app/page'
 import { CombinedSettingsSelector } from './TimeWindow'
 import { PredictionButtons } from './Prediction'
 import { ResultDisplay } from './ResultsDisplay'
@@ -22,7 +21,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { OrderRequest, OrderResponse } from '@/service/hyperliquidOrders'
 import { useHyperliquidOrders } from '@/hooks/useHyperliquidTrading'
 import { useAccount } from 'wagmi'
-import { Prediction, Asset } from '@/lib/types'
+import { Prediction, Asset, GameState, GameStats } from '@/lib/types'
 
 interface GameInterfaceProps {
   gameState: GameState

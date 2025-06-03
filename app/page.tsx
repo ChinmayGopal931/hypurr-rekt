@@ -8,7 +8,7 @@ export default function LandingPage() {
   const router = useRouter()
   const [currentCatIndex, setCurrentCatIndex] = useState(0)
 
-  // Cat images for cycling
+  // Cat images for cycling - updated with full collection
   const catImages = [
     'crystalball.png', 'cheers.png', 'hearteyes.png', 'dafuq.png', 'dead.png', 'fire panic.png',
     'fire smirk.png', 'gm.png', 'handshake.png', 'happy.png', 'hypurr.png', 'liquid.png',
@@ -23,7 +23,7 @@ export default function LandingPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentCatIndex((prev) => (prev + 1) % catImages.length)
-    }, 3000)
+    }, 2000)
 
     return () => clearInterval(interval)
   }, [catImages.length])
@@ -109,37 +109,43 @@ export default function LandingPage() {
               {/* Left Side - Content */}
               <div className="space-y-8">
                 <div className="space-y-4">
-                  <div className="text-emerald-400 font-semibold text-lg">
-                    A Retarded Game
+                  <div className="text-emerald-400 font-semibold text-sm">
+                    Leaderboard coming soon!
                   </div>
                   <h1 className="text-5xl lg:text-7xl font-black leading-tight">
                     <span className="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
-                      ULTRA FAST
+                      14 SECOND
                     </span>
                     <span className="text-white">BETS</span>
                   </h1>
                   <p className="text-xl text-slate-300 leading-relaxed">
-                    Leverage trade any asset in lightning-fast 14, 30, or 60 second rounds.
-                    <span className="text-emerald-400 font-semibold"> Will you get REKT or go to the moon?</span>
+                    Pick any crypto. Go long or short. See what happens in 14, 30, or 60 seconds.
+                    <span className="text-emerald-400 font-semibold"> Simple as that.</span>
                   </p>
                 </div>
 
                 {/* Features */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
-                    <div className="text-2xl mb-2">⚡</div>
+                    <div className="w-12 h-12 mx-auto mb-2">
+                      <img src="/assets/images/hypurr/liquid.png" alt="Speed" className="w-full h-full object-contain" />
+                    </div>
                     <div className="font-semibold text-emerald-400">14-60 Seconds</div>
-                    <div className="text-sm text-slate-400">Lightning fast trades</div>
+                    <div className="text-sm text-slate-400">Quick trades</div>
                   </div>
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
-                    <div className="text-2xl mb-2">📈</div>
+                    <div className="w-12 h-12 mx-auto mb-2">
+                      <img src="/assets/images/hypurr/crystalball.png" alt="Assets" className="w-full h-full object-contain" />
+                    </div>
                     <div className="font-semibold text-emerald-400">Any Asset</div>
                     <div className="text-sm text-slate-400">BTC, ETH, SOL & more</div>
                   </div>
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
-                    <div className="text-2xl mb-2">💰</div>
-                    <div className="font-semibold text-emerald-400">Max Leverage</div>
-                    <div className="text-sm text-slate-400">Go full leverage mode</div>
+                    <div className="w-12 h-12 mx-auto mb-2">
+                      <img src="/assets/images/hypurr/theories.png" alt="Leverage" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="font-semibold text-emerald-400">Leverage</div>
+                    <div className="text-sm text-slate-400">Hyperliquid powered</div>
                   </div>
                 </div>
 
@@ -149,7 +155,7 @@ export default function LandingPage() {
                     onClick={enterApp}
                     className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-lg px-8 py-4 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
                   >
-                    START TRADING
+                    Try It
                   </button>
                   <button
                     onClick={scrollToHow}
@@ -158,8 +164,6 @@ export default function LandingPage() {
                     How It Works
                   </button>
                 </div>
-
-
               </div>
 
               {/* Right Side - Animated Cat Hero */}
@@ -187,33 +191,33 @@ export default function LandingPage() {
           <div className="container mx-auto max-w-4xl text-center">
             <h2 className="text-4xl font-bold mb-12">
               <span className="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
-                How to Get REKT
-              </span> (or Rich)
+                How It Works
+              </span>
             </h2>
 
             <div className="grid md:grid-cols-3 gap-8">
               <div className="space-y-4">
                 <div className="w-20 h-20 mx-auto bg-emerald-500/20 rounded-2xl flex items-center justify-center">
-                  <img src="/assets/images/hypurr/gm.png" alt="Choose" className="w-16 h-16 object-contain" />
+                  <img src="/assets/images/hypurr/crystalball.png" alt="Choose" className="w-16 h-16 object-contain" />
                 </div>
-                <h3 className="text-xl font-bold text-emerald-400">1. Choose Your Asset</h3>
-                <p className="text-slate-300">Pick any crypto asset and your time window (14, 30, or 60 seconds)</p>
+                <h3 className="text-xl font-bold text-emerald-400">1. Pick</h3>
+                <p className="text-slate-300">Choose any crypto and set your timer (14, 30, or 60 seconds)</p>
               </div>
 
               <div className="space-y-4">
                 <div className="w-20 h-20 mx-auto bg-emerald-500/20 rounded-2xl flex items-center justify-center">
-                  <img src="/assets/images/hypurr/fire smirk.png" alt="Bet" className="w-16 h-16 object-contain" />
+                  <img src="/assets/images/hypurr/samurai.png" alt="Bet" className="w-16 h-16 object-contain" />
                 </div>
-                <h3 className="text-xl font-bold text-emerald-400">2. Go Long or Short</h3>
-                <p className="text-slate-300">Predict if price goes UP or DOWN with max leverage</p>
+                <h3 className="text-xl font-bold text-emerald-400">2. Bet</h3>
+                <p className="text-slate-300">Go long or short with leverage</p>
               </div>
 
               <div className="space-y-4">
                 <div className="w-20 h-20 mx-auto bg-emerald-500/20 rounded-2xl flex items-center justify-center">
-                  <img src="/assets/images/hypurr/cheers.png" alt="Win" className="w-16 h-16 object-contain" />
+                  <img src="/assets/images/hypurr/throne.png" alt="Win" className="w-16 h-16 object-contain" />
                 </div>
-                <h3 className="text-xl font-bold text-emerald-400">3. Moon or REKT</h3>
-                <p className="text-slate-300">Watch the timer count down and see if you&apos;re a trading legend</p>
+                <h3 className="text-xl font-bold text-emerald-400">3. Wait</h3>
+                <p className="text-slate-300">Watch the countdown and see what happens</p>
               </div>
             </div>
           </div>
@@ -228,19 +232,19 @@ export default function LandingPage() {
                   HYPURREKT
                 </div>
                 <span className="text-slate-400">•</span>
-                <span className="text-slate-400">Powered by Hyperliquid</span>
+                <span className="text-slate-400">Built on Hyperliquid</span>
               </div>
               <div className="flex items-center space-x-6 text-sm text-slate-400">
-                <span>Testnet Only</span>
-                <span>Trade Irresponsibly</span>
+                <span>Testnet</span>
+                <span>Side Project</span>
               </div>
             </div>
 
             <div className="mt-6 text-center">
               <div className="flex items-center justify-center space-x-2 text-slate-500 text-sm">
-                <img src="/assets/images/hypurr/meowdy.png" alt="Cat" className="w-6 h-6" />
-                <span>Made with love for traders by traders</span>
-                <img src="/assets/images/hypurr/meowdy.png" alt="Cat" className="w-6 h-6 scale-x-[-1]" />
+                <img src="/assets/images/hypurr/meditation.png" alt="Cat" className="w-6 h-6" />
+                <span>A thing I built</span>
+                <img src="/assets/images/hypurr/sleepy.png" alt="Cat" className="w-6 h-6" />
               </div>
             </div>
           </div>
