@@ -4,7 +4,7 @@ import { useAccount, useSignTypedData } from 'wagmi'
 import { useSwitchChain } from 'wagmi'
 import { useCallback, useEffect, useRef } from 'react'
 import type { SignTypedDataMutateAsync } from '@wagmi/core/query'
-import { hyperliquid, HyperliquidAsset, PriceFeed } from '@/service/hyperliquid'
+import { hyperliquid, HyperliquidAsset, PriceFeed, OrderBook, OrderBookLevel } from '@/service/hyperliquid'
 import { hyperliquidOrders, OrderRequest, OrderResponse, PositionInfo, RealTimePnLData } from '@/service/hyperliquidOrders'
 
 export interface Asset {
@@ -51,12 +51,30 @@ export interface AssetPnLResult {
   positionValue: number
 }
 
+// Order Book Types
+export interface ProcessedOrderBook {
+  bids: ProcessedOrderLevel[]
+  asks: ProcessedOrderLevel[]
+  coin: string
+  time: number
+  maxTotal: number // For size bar calculations
+}
+
+export interface ProcessedOrderLevel {
+  price: number
+  size: number
+  total: number
+  sizePercent: number // For size bars (0-100)
+  totalPercent: number // For total bars (0-100)
+}
+
 export interface UseHyperliquidQueries {
   assetMetadata: UseQueryResult<HyperliquidAsset[], Error>
   priceData: UseQueryResult<Asset[], Error>
   priceHistory: UseQueryResult<PriceHistory, Error>
   positions: UseQueryResult<PositionInfo[], Error>
   pnl: UseQueryResult<RealTimePnLData | null, Error>
+  orderBook: (coin?: string) => UseQueryResult<OrderBook | null, Error>
 }
 
 export interface UseHyperliquidMutations {
@@ -105,6 +123,11 @@ export interface UseHyperliquidReturn {
   // Position calculations
   calculatePositionSize: (asset: string, leverage: number) => Promise<PositionSizeResult | null>
 
+  // Order book functions
+  getOrderBook: (coin: string) => ProcessedOrderBook | null
+  subscribeToOrderBook: (coin: string) => void
+  unsubscribeFromOrderBook: (coin: string) => void
+
   // Query states for granular control
   queries: UseHyperliquidQueries
   mutations: UseHyperliquidMutations
@@ -119,7 +142,82 @@ export const hyperliquidKeys = {
   positions: (address?: string) => [...hyperliquidKeys.all, 'positions', address] as const,
   pnl: (address?: string) => [...hyperliquidKeys.all, 'pnl', address] as const,
   assetPnl: (address?: string, asset?: string) => [...hyperliquidKeys.all, 'assetPnl', address, asset] as const,
+  orderBook: (coin?: string) => [...hyperliquidKeys.all, 'orderBook', coin] as const,
 } as const
+
+// Helper function to process order book data for display
+export function processOrderBook(orderBook: OrderBook | null): ProcessedOrderBook | null {
+  if (!orderBook || !orderBook.levels) return null
+
+  const [rawBids, rawAsks] = orderBook.levels
+
+  // Process bids (buy orders) - highest price first
+  const bids: ProcessedOrderLevel[] = rawBids
+    .slice(0, 10) // Limit to 10 levels
+    .map((bid: OrderBookLevel) => ({
+      price: parseFloat(bid.px),
+      size: parseFloat(bid.sz),
+      total: 0, // Will calculate below
+      sizePercent: 0,
+      totalPercent: 0
+    }))
+    .sort((a, b) => b.price - a.price) // Highest price first
+
+  // Process asks (sell orders) - lowest price first  
+  const asks: ProcessedOrderLevel[] = rawAsks
+    .slice(0, 10) // Limit to 10 levels
+    .map((ask: OrderBookLevel) => ({
+      price: parseFloat(ask.px),
+      size: parseFloat(ask.sz),
+      total: 0, // Will calculate below
+      sizePercent: 0,
+      totalPercent: 0
+    }))
+    .sort((a, b) => a.price - b.price) // Lowest price first
+
+  // Calculate cumulative totals for bids (from highest price down)
+  let bidTotal = 0
+  bids.forEach(bid => {
+    bidTotal += bid.size
+    bid.total = bidTotal
+  })
+
+  // Calculate cumulative totals for asks (from lowest price up)
+  let askTotal = 0
+  asks.forEach(ask => {
+    askTotal += ask.size
+    ask.total = askTotal
+  })
+
+  // Find max values for percentage calculations
+  const maxSize = Math.max(
+    ...bids.map(b => b.size),
+    ...asks.map(a => a.size)
+  )
+  const maxTotal = Math.max(
+    bidTotal,
+    askTotal
+  )
+
+  // Calculate percentages for size bars
+  bids.forEach(bid => {
+    bid.sizePercent = maxSize > 0 ? (bid.size / maxSize) * 100 : 0
+    bid.totalPercent = maxTotal > 0 ? (bid.total / maxTotal) * 100 : 0
+  })
+
+  asks.forEach(ask => {
+    ask.sizePercent = maxSize > 0 ? (ask.size / maxSize) * 100 : 0
+    ask.totalPercent = maxTotal > 0 ? (ask.total / maxTotal) * 100 : 0
+  })
+
+  return {
+    bids,
+    asks,
+    coin: orderBook.coin,
+    time: orderBook.time,
+    maxTotal
+  }
+}
 
 // 1. Asset Metadata Hook - No caching (as requested)
 export function useAssetMetadata(): UseQueryResult<HyperliquidAsset[], Error> {
@@ -264,7 +362,50 @@ export function useAssetPnL(address?: string, asset?: string): UseQueryResult<As
   })
 }
 
-// 7. Order Mutations - No optimistic updates (wait for server)
+// 7. Order Book Hook - Real-time WebSocket updates
+export function useOrderBook(coin?: string): UseQueryResult<OrderBook | null, Error> {
+  const queryClient = useQueryClient()
+
+  const query = useQuery({
+    queryKey: hyperliquidKeys.orderBook(coin),
+    queryFn: (): OrderBook | null => {
+      // Return current cached data or null
+      return queryClient.getQueryData<OrderBook>(hyperliquidKeys.orderBook(coin)) || null
+    },
+    enabled: !!coin,
+    staleTime: 1000, // Consider stale after 1 second for order book
+    gcTime: 1000 * 60 * 5, // 5 minutes cache
+    refetchInterval: false, // No polling, WebSocket only
+    refetchOnWindowFocus: false,
+  })
+
+  // WebSocket integration for real-time order book updates
+  useEffect(() => {
+    if (!coin) return
+
+    let isSubscribed = true
+
+    const handleOrderBookUpdate = (orderBook: OrderBook): void => {
+      if (!isSubscribed || orderBook.coin !== coin) return
+
+      // Update React Query cache immediately for fastest updates
+      queryClient.setQueryData(hyperliquidKeys.orderBook(coin), orderBook)
+    }
+
+    console.log(`📊 Subscribing to order book for ${coin}`)
+    hyperliquid.subscribeToL2Book(coin, handleOrderBookUpdate)
+
+    return (): void => {
+      isSubscribed = false
+      hyperliquid.unsubscribeFromL2Book(coin)
+      console.log(`📊 Unsubscribed from order book for ${coin}`)
+    }
+  }, [coin, queryClient])
+
+  return query
+}
+
+// 8. Order Mutations - No optimistic updates (wait for server)
 export function useOrderMutations(): UseHyperliquidMutations {
   const queryClient = useQueryClient()
   const { address } = useAccount()
@@ -383,7 +524,7 @@ const handleApiError = (error: unknown): HyperliquidError => {
   }
 }
 
-// 8. Main Hook - Combines everything efficiently
+// 9. Main Hook - Combines everything efficiently
 export function useHyperliquid(): UseHyperliquidReturn {
   const { address, isConnected: isWalletConnected, chain } = useAccount()
   const { signTypedDataAsync } = useSignTypedData()
@@ -569,6 +710,24 @@ export function useHyperliquid(): UseHyperliquidReturn {
     return unsubscribe
   }, [queryClient])
 
+  // Order book functions
+  const getOrderBook = useCallback((coin: string): ProcessedOrderBook | null => {
+    const orderBookData = queryClient.getQueryData<OrderBook>(hyperliquidKeys.orderBook(coin))
+    return processOrderBook(orderBookData || null)
+  }, [queryClient])
+
+  const subscribeToOrderBook = useCallback((coin: string): void => {
+    hyperliquid.subscribeToL2Book(coin, (orderBook: OrderBook) => {
+      queryClient.setQueryData(hyperliquidKeys.orderBook(coin), orderBook)
+    })
+  }, [queryClient])
+
+  const unsubscribeFromOrderBook = useCallback((coin: string): void => {
+    hyperliquid.unsubscribeFromL2Book(coin)
+    // Optionally clear the cached data
+    queryClient.removeQueries({ queryKey: hyperliquidKeys.orderBook(coin) })
+  }, [queryClient])
+
   return {
     // Core data - fastest updates via WebSocket + React Query
     assets,
@@ -606,6 +765,11 @@ export function useHyperliquid(): UseHyperliquidReturn {
     // Position calculations
     calculatePositionSize,
 
+    // Order book functions
+    getOrderBook,
+    subscribeToOrderBook,
+    unsubscribeFromOrderBook,
+
     // Query states for granular control
     queries: {
       assetMetadata: assetMetadataQuery,
@@ -613,6 +777,7 @@ export function useHyperliquid(): UseHyperliquidReturn {
       priceHistory: priceHistoryQuery,
       positions: positionsQuery,
       pnl: pnlQuery,
+      orderBook: useOrderBook, // Return the hook function
     },
 
     // Mutation states

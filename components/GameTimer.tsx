@@ -1,12 +1,11 @@
-// Updated GameTimer.tsx with typed hooks and proper error handling
+// Updated GameTimer.tsx with OrderBook component
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Progress } from './ui/progress'
 import { Clock, Target, TrendingUp, TrendingDown, DollarSign, Loader2, Zap, Flame, Trophy, AlertCircle } from 'lucide-react'
 import { Prediction } from '@/app/page'
 import { useHyperliquid, useRealTimePnL, useAssetPnL } from '@/hooks/useHyperliquid'
-import { Area, AreaChart, CartesianGrid, DefaultTooltipContent, ReferenceLine, XAxis, YAxis } from 'recharts'
-import { ChartContainer, ChartTooltip, type ChartConfig } from '@/components/ui/chart'
+import { OrderBook } from '@/components/OrderBook'
 import type { RealTimePnLData } from '@/service/hyperliquidOrders'
 
 interface GameTimerProps {
@@ -24,13 +23,6 @@ interface RealTimePnLState {
   isLoading: boolean
   lastUpdate: number | null
   error: string | null
-}
-
-interface PriceDataPoint {
-  time: number
-  price: number
-  elapsed: number
-  timestamp: string
 }
 
 interface PnLDisplayData {
@@ -60,26 +52,9 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     error: null
   })
 
-  // Price chart data
-  const [priceHistory, setPriceHistory] = useState<PriceDataPoint[]>([])
+  // Winning status based on price movement
   const [isWinning, setIsWinning] = useState<boolean | null>(null)
-  const gameStartTime = useRef<number>(Date.now())
-  const lastPriceRef = useRef<number | null>(null)
   const pnlPollingRef = useRef<(() => void) | null>(null)
-
-  // Chart configuration for shadcn
-  const chartConfig = {
-    price: {
-      label: "Price",
-      color: isWinning === true ? "hsl(var(--chart-1))" :
-        isWinning === false ? "hsl(var(--chart-5))" :
-          "hsl(var(--chart-3))"
-    },
-    entryPrice: {
-      label: "Entry Price",
-      color: "hsl(var(--chart-4))"
-    }
-  } satisfies ChartConfig
 
   // Get Hyperliquid hooks with proper typing
   const {
@@ -103,103 +78,14 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
     return 'Unknown P&L error occurred'
   }, [])
 
-  // Initialize game start time when prediction starts
+  // Calculate winning status based on price movement
   useEffect(() => {
-    if (type === 'game' && prediction) {
-      gameStartTime.current = Date.now()
-      setPriceHistory([])
-
-      console.log(`🎮 Game started for ${prediction.asset.symbol} - Direction: ${prediction.direction} - Entry: ${prediction.entryPrice}`)
-
-      // Add initial price point
-      if (currentPrice) {
-        const initialPoint: PriceDataPoint = {
-          time: 0,
-          price: currentPrice,
-          elapsed: 0,
-          timestamp: new Date().toLocaleTimeString()
-        }
-        setPriceHistory([initialPoint])
-        lastPriceRef.current = currentPrice
-        console.log(`📊 Initial chart point added: ${currentPrice}`)
-      } else {
-        console.warn('⚠️ No currentPrice available at game start')
-      }
+    if (type === 'game' && prediction && currentPrice) {
+      const priceDiff = currentPrice - prediction.entryPrice
+      const newIsWinning = prediction.direction === 'up' ? priceDiff > 0 : priceDiff < 0
+      setIsWinning(newIsWinning)
     }
   }, [type, prediction, currentPrice])
-
-  // Force chart updates every second for 30-second games
-  useEffect(() => {
-    if (type !== 'game' || !prediction || !currentPrice) return
-
-    const updateInterval = setInterval(() => {
-      const now = Date.now()
-      const elapsed = (now - gameStartTime.current) / 1000
-
-      if (elapsed <= initialTime && elapsed > 0) {
-        const newPoint: PriceDataPoint = {
-          time: elapsed,
-          price: currentPrice,
-          elapsed: elapsed,
-          timestamp: new Date().toLocaleTimeString()
-        }
-
-        setPriceHistory(prev => {
-          // Always add new point every second, even if price hasn't changed
-          const newHistory = [...prev, newPoint]
-
-          // For 30-second games, keep more frequent updates
-          const maxPoints = initialTime <= 60 ? initialTime * 2 : 100
-          if (newHistory.length > maxPoints) {
-            return newHistory.slice(-maxPoints)
-          }
-          return newHistory
-        })
-
-        // Update winning status
-        const priceDiff = currentPrice - prediction.entryPrice
-        const newIsWinning = prediction.direction === 'up' ? priceDiff > 0 : priceDiff < 0
-        setIsWinning(newIsWinning)
-
-        console.log(`Chart update: ${elapsed.toFixed(1)}s - Price: ${currentPrice} - ${newIsWinning ? 'WINNING' : 'LOSING'}`)
-      }
-    }, 500) // Update every 500ms for smooth movement
-
-    return () => clearInterval(updateInterval)
-  }, [type, prediction, currentPrice, initialTime])
-
-  // Also update immediately when price changes
-  useEffect(() => {
-    if (type === 'game' && currentPrice && lastPriceRef.current !== currentPrice && prediction) {
-      const now = Date.now()
-      const elapsed = (now - gameStartTime.current) / 1000
-
-      if (elapsed <= initialTime && elapsed > 0) {
-        const newPoint: PriceDataPoint = {
-          time: elapsed,
-          price: currentPrice,
-          elapsed: elapsed,
-          timestamp: new Date().toLocaleTimeString()
-        }
-
-        setPriceHistory(prev => {
-          // Check if we just added a point recently to avoid duplicates
-          const lastPoint = prev[prev.length - 1]
-          if (lastPoint && Math.abs(lastPoint.elapsed - elapsed) < 0.3) {
-            // Update the last point instead of adding new one
-            const updatedHistory = [...prev]
-            updatedHistory[updatedHistory.length - 1] = newPoint
-            return updatedHistory
-          } else {
-            return [...prev, newPoint]
-          }
-        })
-
-        lastPriceRef.current = currentPrice
-        console.log(`Price change detected: ${currentPrice} at ${elapsed.toFixed(1)}s`)
-      }
-    }
-  }, [currentPrice, type, prediction, initialTime])
 
   // Timer logic
   useEffect(() => {
@@ -360,31 +246,6 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
 
   const pnlDisplay = getPnLDisplay()
 
-  // Get chart colors based on performance
-  const getChartColors = useCallback(() => {
-    if (isWinning === true) {
-      return {
-        stroke: 'hsl(var(--chart-1))', // Green
-        fill: 'url(#greenGradient)',
-        glow: 'shadow-green-500/50'
-      }
-    }
-    if (isWinning === false) {
-      return {
-        stroke: 'hsl(var(--chart-5))', // Red  
-        fill: 'url(#redGradient)',
-        glow: 'shadow-red-500/50'
-      }
-    }
-    return {
-      stroke: 'hsl(var(--chart-3))', // Blue
-      fill: 'url(#blueGradient)',
-      glow: 'shadow-blue-500/50'
-    }
-  }, [isWinning])
-
-  const chartColors = getChartColors()
-
   if (type === 'countdown') {
     return (
       <div className="text-center space-y-6">
@@ -442,160 +303,13 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
         )}
       </div>
 
-      {/* Real-time Price Chart */}
-      {prediction && priceHistory.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`
-            p-4 bg-slate-800/30 rounded-xl border-2 transition-all duration-300
-            ${isWinning === true ? 'border-green-500/50 bg-green-500/5' :
-              isWinning === false ? 'border-red-500/50 bg-red-500/5' :
-                'border-slate-700'}
-            ${chartColors.glow} shadow-lg
-          `}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${isWinning === true ? 'bg-green-400' :
-                isWinning === false ? 'bg-red-400' :
-                  'bg-blue-400'
-                }`} />
-              <span className="text-sm font-medium text-slate-300">
-                {prediction.asset.symbol} Live Price
-              </span>
-              <span className="text-xs text-slate-500">
-                ({priceHistory.length} points)
-              </span>
-            </div>
-            <div className="text-sm text-slate-400">
-              Entry: ${prediction.entryPrice.toFixed(2)}
-            </div>
-          </div>
-
-          {/* Chart Container */}
-          <ChartContainer config={chartConfig} className="h-48 w-full">
-            <AreaChart data={priceHistory} accessibilityLayer>
-              <defs>
-                <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="redGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-5))" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(var(--chart-5))" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="blueGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-3))" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(var(--chart-3))" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#374151"
-                strokeOpacity={0.3}
-                vertical={false}
-              />
-
-              <XAxis
-                dataKey="elapsed"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                tickFormatter={(value: number) => `${value.toFixed(0)}s`}
-                tickMargin={10}
-              />
-
-              <YAxis
-                domain={[(dataMin: number) => {
-                  // Make Y-axis more sensitive for small price movements
-                  const padding = Math.max((dataMin * 0.001), 0.1) // 0.1% padding or minimum $0.10
-                  return dataMin - padding
-                }, (dataMax: number) => {
-                  const padding = Math.max((dataMax * 0.001), 0.1)
-                  return dataMax + padding
-                }]}
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                tickFormatter={(value: number) => `${value.toFixed(2)}`}
-                width={80}
-              />
-
-              {/* Entry Price Reference Line */}
-              <ReferenceLine
-                y={prediction.entryPrice}
-                stroke="hsl(var(--chart-4))"
-                strokeDasharray="5 5"
-                strokeWidth={2}
-                label={{
-                  value: `Entry $${prediction.entryPrice.toFixed(2)}`,
-                  fill: "hsl(var(--chart-4))",
-                  fontSize: 12
-                }}
-              />
-
-              {/* Price Area */}
-              <Area
-                type="monotone"
-                dataKey="price"
-                stroke={chartColors.stroke}
-                strokeWidth={3}
-                fill={chartColors.fill}
-                dot={{
-                  r: 2,
-                  fill: chartColors.stroke,
-                  className: 'drop-shadow-lg'
-                }}
-                activeDot={{
-                  r: 4,
-                  fill: chartColors.stroke,
-                  stroke: '#fff',
-                  strokeWidth: 2,
-                  className: 'drop-shadow-lg'
-                }}
-              />
-
-              <ChartTooltip
-                content={
-                  <DefaultTooltipContent<number, string>
-                    formatter={(value) => [value.toString(), "someLabel"]}
-                  />
-                }
-              />
-            </AreaChart>
-          </ChartContainer>
-
-          {/* Current Price Display with Debug Info */}
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-slate-400">Current:</span>
-              <span className="text-lg font-mono font-bold text-white">
-                ${currentPrice?.toFixed(2)}
-              </span>
-              {/* Debug: Show if price is updating */}
-              <span className="text-xs text-slate-500">
-                (Last: {lastPriceRef.current?.toFixed(2) || 'none'})
-              </span>
-            </div>
-
-            {pnlDisplay && (
-              <div className={`
-                flex items-center space-x-1 px-3 py-1 rounded-full text-sm font-bold
-                ${pnlDisplay.isWinning ? 'bg-green-500/20 text-green-400' :
-                  pnlDisplay.isLosing ? 'bg-red-500/20 text-red-400' :
-                    'bg-slate-500/20 text-slate-400'}
-              `}>
-                {pnlDisplay.isWinning ? '📈' : pnlDisplay.isLosing ? '📉' : '➡️'}
-                <span>
-                  {pnlDisplay.isWinning ? '+' : pnlDisplay.isLosing ? '-' : ''}
-                  {pnlDisplay.value.toFixed(2)}%
-                </span>
-              </div>
-            )}
-          </div>
-        </motion.div>
+      {/* Real-time Order Book */}
+      {prediction && (
+        <OrderBook
+          coin={prediction.asset.id}
+          currentPrice={currentPrice}
+          isWinning={isWinning}
+        />
       )}
 
       {/* Timer Display */}
