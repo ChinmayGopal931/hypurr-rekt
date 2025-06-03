@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, Activity, Wifi, WifiOff } from 'lucide-react'
-import { useOrderBook, processOrderBook, ProcessedOrderLevel } from '@/hooks/useHyperliquid'
+import { ProcessedOrderLevel } from '@/hooks/useHyperliquid'
+import { useOrderBook } from '@/hooks/useHyperliquidSubscription'
+import { processOrderBook } from '@/lib/utils'
 
 interface OrderBookProps {
     coin: string

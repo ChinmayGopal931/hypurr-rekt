@@ -20,6 +20,8 @@ import { DepositRequiredAlert } from './DepositAlert'
 import { GameInterfaceSkeleton } from './PriceSkeleton'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { OrderRequest, OrderResponse } from '@/service/hyperliquidOrders'
+import { useHyperliquidOrders } from '@/hooks/useHyperliquidTrading'
+import { useAccount } from 'wagmi'
 
 interface GameInterfaceProps {
   gameState: GameState
@@ -65,21 +67,27 @@ export function GameInterface({
   const [completionData, setCompletionData] = useState<CompletionData | null>(null)
   const [showSuccessFeedback, setShowSuccessFeedback] = useState(false)
 
+  const { address, isConnected: isWalletConnected } = useAccount()
+
+
   // Main Hyperliquid hook with all functionality
   const {
     assets,
     error,
     isConnected: hlConnected,
     lastUpdate,
-    isWalletConnected,
-    address,
-    placePredictionOrder,
     onPositionResult,
     getCurrentPrice,
     calculatePositionSize,
-    mutations,
     queries
-  } = useHyperliquid()
+  } = useHyperliquid(address)
+
+  const {
+    mutations,
+    placePredictionOrder
+  } = useHyperliquidOrders()
+
+
 
   // Separate positions hook for better performance
   const positionsQuery = usePositions(address)
@@ -102,26 +110,17 @@ export function GameInterface({
     if (assets.length > 0 && !selectedAsset) {
       const btcAsset = assets.find(asset => asset.id === 'BTC')
       setSelectedAsset(btcAsset || assets[0])
-    }
-  }, [assets, selectedAsset])
-
-  // Update selected asset price in real-time with performance optimization
-  useEffect(() => {
-    if (selectedAsset && assets.length > 0) {
+    } else if (activePositions.length === 0) {
+      setOrderError(null)
+      setNeedsDeposit(false)
+    } else if (selectedAsset && assets.length > 0) {
       const updatedAsset = assets.find(a => a.id === selectedAsset.id)
       if (updatedAsset && updatedAsset.price !== selectedAsset.price) {
         setSelectedAsset(updatedAsset)
       }
     }
-  }, [assets, selectedAsset])
+  }, [activePositions.length, assets, selectedAsset])
 
-  // Clear order error when active positions change
-  useEffect(() => {
-    if (activePositions.length === 0) {
-      setOrderError(null)
-      setNeedsDeposit(false)
-    }
-  }, [activePositions.length])
 
   // Error handling utility with proper typing
   const handleOrderError = useCallback((error: unknown): OrderError => {
@@ -182,7 +181,7 @@ export function GameInterface({
           estimatedUsdValue: positionCalc?.usdValue || 'unknown'
         })
 
-        const response: OrderResponse = await placePredictionOrder(orderRequest)
+        const response: OrderResponse = await placePredictionOrder({ request: orderRequest, currentMarketPrice: currentPrice })
 
         if (response.success) {
           if (response.fillInfo?.filled) {
@@ -360,15 +359,7 @@ export function GameInterface({
   // Destructure query states for clarity
   const { assetMetadata: assetMetadataQuery, priceData: priceDataQueryInfo } = queries;
 
-  // MODIFIED LOADING LOGIC START
 
-  // Determine if we should show the skeleton.
-  // Show skeleton if:
-  // 1. Metadata is still loading.
-  // 2. OR, metadata has loaded successfully, BUT:
-  //    a. The priceData query itself is in its 'isLoading' phase (e.g. initial fetch if any).
-  //    b. OR, the priceData query is NOT in an error state, AND the `assets` array is still empty.
-  //       This covers the crucial period where the WebSocket is connecting and hasn't pushed the initial assets yet.
   const showSkeleton =
     assetMetadataQuery.isLoading ||
     (assetMetadataQuery.isSuccess &&

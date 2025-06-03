@@ -8,6 +8,7 @@ import { Prediction } from '@/app/page'
 import { useHyperliquid, useRealTimePnL, useAssetPnL } from '@/hooks/useHyperliquid'
 import { OrderBook } from '@/components/OrderBook'
 import type { RealTimePnLData } from '@/service/hyperliquidOrders'
+import { useAccount } from 'wagmi'
 
 interface GameTimerProps {
   initialTime: number
@@ -58,12 +59,13 @@ export function GameTimer({ initialTime, onComplete, type, prediction, currentPr
   const [isWinning, setIsWinning] = useState<boolean | null>(null)
   const pnlPollingRef = useRef<(() => void) | null>(null)
 
+  const { address, isConnected: isWalletConnected } = useAccount()
+
   // Get Hyperliquid hooks with proper typing
   const {
-    address,
-    isWalletConnected,
     startPnLPolling
-  } = useHyperliquid()
+  } = useHyperliquid(address)
+
 
   // Use separate hooks for better performance and error isolation
   const pnlQuery = useRealTimePnL(address)

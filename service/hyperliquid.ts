@@ -58,11 +58,24 @@ export class HyperliquidService {
 
   private useTestnet: boolean
   private ws: WebSocket | null = null
-  private priceCallback: ((prices: PriceFeed) => void) | null = null
-  private orderBookCallback: ((orderBook: OrderBook) => void) | null = null
-  private currentOrderBookCoin: string | null = null
+  private connectionState: 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' = 'DISCONNECTED';
+  private connectionPromise: Promise<void> | null = null; // To chain connection attempts
+
   private reconnectAttempts = 0
   private maxReconnectAttempts = 5
+  private reconnectTimeoutId: NodeJS.Timeout | null = null;
+
+  // Store callbacks separately
+  private priceUpdateCallback: ((prices: PriceFeed) => void) | null = null;
+  private orderBookUpdateCallback: ((orderBook: OrderBook) => void) | null = null;
+  private currentSubscribedOrderBookCoin: string | null = null;
+
+
+  // Track desired subscriptions
+  private activeSubscriptions = {
+    allMids: false,
+    l2BookCoin: null as string | null,
+  };
 
   constructor(useTestnet = true) {
     this.useTestnet = useTestnet
@@ -159,172 +172,215 @@ export class HyperliquidService {
       throw error
     }
   }
-
-  /**
-   * Subscribe to real-time price feeds via WebSocket
-   */
-  subscribeToAllMids(callback: (prices: PriceFeed) => void): void {
-    this.priceCallback = callback
-    this.connectWebSocket()
-  }
-
-  /**
-   * Subscribe to real-time order book updates via WebSocket
-   */
-  subscribeToL2Book(coin: string, callback: (orderBook: OrderBook) => void): void {
-    // Set up order book callback
-    this.orderBookCallback = callback
-    this.currentOrderBookCoin = coin
-
-    // Connect WebSocket if not already connected
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.connectWebSocket()
-
-      // Wait for connection then subscribe
-      setTimeout(() => {
-        this.sendL2BookSubscription(coin)
-      }, 1000)
-    } else {
-      this.sendL2BookSubscription(coin)
+  private _connect(): Promise<void> {
+    if (this.connectionState === 'CONNECTED' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
     }
-  }
 
-  private sendL2BookSubscription(coin: string): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      const subscription = {
-        method: 'subscribe',
-        subscription: { type: 'l2Book', coin }
-      }
-      this.ws.send(JSON.stringify(subscription))
-      console.log(`📊 Subscribed to L2 book for ${coin}`)
+    if (this.connectionState === 'CONNECTING' && this.connectionPromise) {
+      return this.connectionPromise;
     }
-  }
 
-  /**
-   * Unsubscribe from order book updates
-   */
-  unsubscribeFromL2Book(coin: string): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      const unsubscribe = {
-        method: 'unsubscribe',
-        subscription: { type: 'l2Book', coin }
-      }
-      this.ws.send(JSON.stringify(unsubscribe))
-      console.log(`📊 Unsubscribed from L2 book for ${coin}`)
-    }
-    this.orderBookCallback = null
-    this.currentOrderBookCoin = null
-  }
-
-  private connectWebSocket(): void {
-    try {
-      this.ws = new WebSocket(this.getWsUrl())
-
-      this.ws.onopen = () => {
-        console.log('Connected to Hyperliquid WebSocket')
-        this.reconnectAttempts = 0
-
-        // Subscribe to allMids feed if price callback exists
-        if (this.priceCallback) {
-          const subscription = {
-            method: 'subscribe',
-            subscription: { type: 'allMids' }
-          }
-          this.ws?.send(JSON.stringify(subscription))
-        }
-
-        // Subscribe to order book if callback exists
-        if (this.orderBookCallback && this.currentOrderBookCoin) {
-          this.sendL2BookSubscription(this.currentOrderBookCoin)
-        }
-      }
-
-      this.ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data)
-
-          // Handle price feed updates
-          if (message.channel === 'allMids' && message.data?.mids) {
-            this.priceCallback?.(message.data.mids)
-          }
-
-          // Handle order book updates
-          if (message.channel === 'l2Book' && message.data) {
-            const orderBook: OrderBook = {
-              coin: this.currentOrderBookCoin || '',
-              levels: message.data.levels,
-              time: Date.now()
-            }
-            this.orderBookCallback?.(orderBook)
-          }
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error)
-        }
-      }
-
-      this.ws.onclose = () => {
-        console.log('WebSocket connection closed')
-        this.attemptReconnect()
-      }
-
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
-      }
-
-    } catch (error) {
-      console.error('Error connecting to WebSocket:', error)
-      this.attemptReconnect()
-    }
-  }
-
-  private attemptReconnect(): void {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)
-
-      console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`)
-
-      setTimeout(() => {
-        this.connectWebSocket()
-      }, delay)
-    } else {
-      console.error('Max reconnection attempts reached')
-    }
-  }
-
-  /**
-   * Disconnect WebSocket
-   */
-  disconnect(): void {
+    this.connectionState = 'CONNECTING';
+    // Clear any previous ws instance and its handlers before creating a new one
     if (this.ws) {
-      this.ws.close()
-      this.ws = null
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      if (this.ws.readyState !== WebSocket.CLOSED) {
+        this.ws.close();
+      }
+      this.ws = null;
     }
-    this.priceCallback = null
-    this.orderBookCallback = null
-    this.currentOrderBookCoin = null
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
+    console.log('🔌 [HyperliquidService] Attempting to connect WebSocket...');
+
+    this.connectionPromise = new Promise<void>((resolve, reject) => {
+      try {
+        this.ws = new WebSocket(this.getWsUrl());
+
+        this.ws.onopen = () => {
+          console.log('✅ [HyperliquidService] WebSocket Connected');
+          this.connectionState = 'CONNECTED';
+          this.reconnectAttempts = 0;
+
+          // Send subscriptions based on active flags
+          if (this.activeSubscriptions.allMids) {
+            this.ws?.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'allMids' } }));
+            console.log('Sent subscribe for allMids on connect');
+          }
+          if (this.activeSubscriptions.l2BookCoin) {
+            this.ws?.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'l2Book', coin: this.activeSubscriptions.l2BookCoin } }));
+            console.log(`Sent subscribe for l2Book ${this.activeSubscriptions.l2BookCoin} on connect`);
+          }
+          resolve();
+        };
+
+        this.ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data as string);
+            if (message.channel === 'allMids' && message.data?.mids) {
+              this.priceUpdateCallback?.(message.data.mids);
+            }
+            if (message.channel === 'l2Book' && message.data && message.data.coin === this.currentSubscribedOrderBookCoin) {
+              const orderBook: OrderBook = {
+                coin: message.data.coin,
+                levels: message.data.levels,
+                time: Date.now(),
+              };
+              this.orderBookUpdateCallback?.(orderBook);
+            }
+          } catch (error) {
+            console.error('[HyperliquidService] Error parsing WebSocket message:', error);
+          }
+        };
+
+        this.ws.onclose = (event) => {
+          console.log(`💣 [HyperliquidService] WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
+          this.ws = null; // Ensure ws is nulled
+          if (this.connectionState !== 'DISCONNECTED') { // Don't auto-reconnect if intentionally disconnected
+            this.connectionState = 'RECONNECTING';
+            this._attemptReconnect();
+          } else {
+            console.log("[HyperliquidService] WebSocket closed intentionally, no reconnect.");
+          }
+          // Do not reject the promise here, _attemptReconnect handles further actions.
+        };
+
+        this.ws.onerror = (error) => {
+          console.error('❌ [HyperliquidService] WebSocket error:', error);
+          // onerror is usually followed by onclose, which will trigger reconnect logic.
+          // If connectionPromise is pending, reject it.
+          if (this.connectionState === 'CONNECTING') {
+            this.connectionState = 'DISCONNECTED'; // Or RECONNECTING if appropriate
+            reject(new Error('WebSocket connection failed'));
+          }
+          // No need to call _attemptReconnect here as onclose will handle it.
+        };
+      } catch (error) {
+        console.error('[HyperliquidService] Error instantiating WebSocket:', error);
+        this.connectionState = 'DISCONNECTED';
+        reject(error);
+        this._attemptReconnect(); // Attempt to recover from instantiation error
+      }
+    });
+    return this.connectionPromise;
+  }
+
+  private _attemptReconnect(): void {
+    if (this.reconnectAttempts < this.maxReconnectAttempts && this.connectionState !== 'DISCONNECTED') {
+      this.reconnectAttempts++;
+      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000); // Adjusted delay start
+      console.log(`[HyperliquidService] Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      this.reconnectTimeoutId = setTimeout(() => {
+        this.reconnectTimeoutId = null;
+        if (this.connectionState !== 'DISCONNECTED') { // Check again before connecting
+          this._connect().catch(err => console.error("[HyperliquidService] Reconnect attempt failed:", err));
+        }
+      }, delay);
+    } else if (this.connectionState !== 'DISCONNECTED') {
+      console.error('[HyperliquidService] Max reconnection attempts reached.');
+      this.connectionState = 'DISCONNECTED'; // Give up
+    }
+  }
+
+  // --- Public Subscription Methods ---
+
+  subscribeToAllMids(callback: (prices: PriceFeed) => void): () => void {
+    console.log('[HyperliquidService] Request to subscribe to allMids');
+    this.priceUpdateCallback = callback;
+    this.activeSubscriptions.allMids = true;
+
+    if (this.connectionState === 'CONNECTED' && this.ws?.readyState === WebSocket.OPEN) {
+      // If already connected, ensure subscription is sent
+      this.ws?.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'allMids' } }));
+      console.log('Sent subscribe for allMids (already connected)');
+    } else if (this.connectionState === 'DISCONNECTED' || this.connectionState === 'RECONNECTING') {
+      this._connect().catch(err => console.error("[HyperliquidService] Connection failed for allMids subscription:", err));
+    }
+    // else if CONNECTING, onopen will handle it.
+
+    return () => this.unsubscribeFromAllMids();
+  }
+
+  unsubscribeFromAllMids(): void {
+    console.log('[HyperliquidService] Request to unsubscribe from allMids');
+    this.activeSubscriptions.allMids = false;
+    this.priceUpdateCallback = null;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ method: 'unsubscribe', subscription: { type: 'allMids' } }));
+      console.log('Sent unsubscribe for allMids');
+    }
+    this._checkAndDisconnectIfNoSubscriptions();
+  }
+
+  subscribeToL2Book(coin: string, callback: (orderBook: OrderBook) => void): () => void {
+    console.log(`[HyperliquidService] Request to subscribe to L2Book for ${coin}`);
+    this.orderBookUpdateCallback = callback;
+    this.currentSubscribedOrderBookCoin = coin; // For message routing
+    this.activeSubscriptions.l2BookCoin = coin;
+
+    if (this.connectionState === 'CONNECTED' && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws?.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'l2Book', coin } }));
+      console.log(`Sent subscribe for l2Book ${coin} (already connected)`);
+    } else if (this.connectionState === 'DISCONNECTED' || this.connectionState === 'RECONNECTING') {
+      this._connect().catch(err => console.error(`[HyperliquidService] Connection failed for L2Book ${coin} subscription:`, err));
+    }
+    // else if CONNECTING, onopen will handle it.
+
+    return () => this.unsubscribeFromL2Book(coin);
+  }
+
+  unsubscribeFromL2Book(coin: string): void {
+    console.log(`[HyperliquidService] Request to unsubscribe from L2Book for ${coin}`);
+    if (this.activeSubscriptions.l2BookCoin === coin) {
+      this.activeSubscriptions.l2BookCoin = null;
+      this.orderBookUpdateCallback = null;
+      this.currentSubscribedOrderBookCoin = null;
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ method: 'unsubscribe', subscription: { type: 'l2Book', coin } }));
+        console.log(`Sent unsubscribe for l2Book ${coin}`);
+      }
+    }
+    this._checkAndDisconnectIfNoSubscriptions();
+  }
+
+  private _checkAndDisconnectIfNoSubscriptions(): void {
+    if (!this.activeSubscriptions.allMids && !this.activeSubscriptions.l2BookCoin) {
+      console.log('[HyperliquidService] No active subscriptions. Disconnecting WebSocket.');
+      this.connectionState = 'DISCONNECTED'; // Signal intentional disconnect
+      if (this.reconnectTimeoutId) {
+        clearTimeout(this.reconnectTimeoutId);
+        this.reconnectTimeoutId = null;
+      }
+      if (this.ws) {
+        this.ws.onclose = () => { console.log("[HyperliquidService] WebSocket intentionally closed (no subs)."); this.ws = null; }; // Override onclose
+        if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) {
+          this.ws.close();
+        }
+      }
+      this.connectionPromise = null; // Clear any pending connection promise
+      this.reconnectAttempts = 0; // Reset reconnect attempts
+    }
   }
 
   /**
-   * Format price according to asset's szDecimals
+   * Public method to fully disconnect and stop all activity.
+   * Different from internal _checkAndDisconnect...
    */
-  formatPrice(price: number, szDecimals: number): string {
-    // Price precision: up to 5 significant figures, no more than 6 decimal places
-    const maxDecimals = Math.min(6, Math.max(0, 6 - szDecimals))
-    const formatted = price.toExponential(maxDecimals).replace(/e\+?(-?\d+)/, `e${+RegExp.$1 - maxDecimals}`)
-    return formatted.replace(/\.?0+$/, '')
-  }
-
-  /**
-   * Calculate asset ID for perpetuals (index in universe array)
-   */
-  getAssetId(assetIndex: number, isSpot = false): number {
-    if (isSpot) {
-      return 10000 + assetIndex
-    }
-    return assetIndex
+  public forceDisconnect(): void {
+    console.log('[HyperliquidService] Force disconnect requested.');
+    this.activeSubscriptions.allMids = false;
+    this.activeSubscriptions.l2BookCoin = null;
+    this.priceUpdateCallback = null;
+    this.orderBookUpdateCallback = null;
+    this._checkAndDisconnectIfNoSubscriptions(); // This will now proceed to disconnect
   }
 }
 
-// Singleton instance
-export const hyperliquid = new HyperliquidService(true) // Use testnet by default
+export const hyperliquid = new HyperliquidService(true);
