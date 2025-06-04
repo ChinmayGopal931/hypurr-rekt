@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
   title: 'HYPURREKT',
-  description: 'Fast-paced crypto price prediction game',
+  description: 'Are you Feline the Market?',
 }
 
 export default function RootLayout({

@@ -15,7 +15,7 @@ export const Emotion = (props: { pnlRatio: number }) => {
         left: pnlRatio < 0 ? "615px" : "618px"
       }}
     >
-      <img src={pnlRatio > 0 ? "/assets/images/cash.png" : "/assets/images/cry.png"} width={320} height={320} style={{ borderRadius: "100%" }} />
+      <img src={pnlRatio > 0 ? "/assets/images/cash.png" : "/assets/images/cry.png"} width={390} height={320} style={{ borderRadius: "100%" }} />
     </div>
   )
 };

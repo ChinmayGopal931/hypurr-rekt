@@ -38,10 +38,28 @@ export default function TradePage() {
     // Determine if there's an active position
     const hasActivePosition = currentPrediction !== null && (gameState === 'active' || gameState === 'countdown')
 
+    // Calculate real-time PnL
+    const calculatePnL = (): number => {
+        if (!currentPrediction || !currentPrediction.asset) return 0
+
+        const entryPrice = currentPrediction.entryPrice
+        const currentPrice = currentPrediction.asset.price
+        const direction = currentPrediction.direction
+
+        if (direction === 'up') {
+            return currentPrice - entryPrice
+        } else {
+            return entryPrice - currentPrice
+        }
+    }
+
+    const currentPnL = calculatePnL()
+
     return (
         <DynamicBackground
             hasActivePosition={hasActivePosition}
             gameState={gameState}
+            currentPnL={currentPnL}
         >
             <Header
                 gameStats={gameStats}

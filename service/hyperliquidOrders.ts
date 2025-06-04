@@ -284,7 +284,7 @@ export class HyperliquidOrderService {
       }
 
       const isClosingLong = position.direction === 'up'
-      const aggressivePriceMultiplier = isClosingLong ? 0.98 : 1.02
+      const aggressivePriceMultiplier = isClosingLong ? 0.999 : 1.001
       const aggressivePriceRaw = currentPrice * aggressivePriceMultiplier
       const aggressivePrice = formatPrice(aggressivePriceRaw, assetConfig.szDecimals)
 

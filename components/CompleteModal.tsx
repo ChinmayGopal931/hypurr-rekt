@@ -1,4 +1,4 @@
-// GameCompletionModal.tsx
+// GameCompletionModal.tsx - Fixed to use actual API trade data
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
@@ -13,9 +13,9 @@ import {
   Zap,
   PlayCircle,
   BarChart3,
-  Image as ImageIcon // Added for generate image button
+  Image as ImageIcon
 } from 'lucide-react';
-import { render } from "./share_trade/render"// Import the render function from your image generation module
+import { render } from "./share_trade/render"
 import { GameStats, Prediction } from '@/lib/types';
 
 interface GameCompletionModalProps {
@@ -27,6 +27,10 @@ interface GameCompletionModalProps {
   gameStats: GameStats;
   leverage: number;
   positionValue: number;
+  // ADD: New props for actual trade data
+  actualEntryPrice?: number;  // Real fill price from API
+  positionSize?: string;      // Actual position size (e.g., "0.0037")
+  realPnLDollar?: number;     // Real P&L in USD from API
 }
 
 export function GameCompletionModal({
@@ -37,22 +41,62 @@ export function GameCompletionModal({
   actualExitPrice,
   gameStats,
   leverage,
-  positionValue
+  positionValue,
+  actualEntryPrice,
+  positionSize,
+  realPnLDollar
 }: GameCompletionModalProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [soundPlayed, setSoundPlayed] = useState(false);
-
   const [shareableImageUrl, setShareableImageUrl] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   const isWin = prediction.result === 'win';
-  const priceDiff = actualExitPrice - prediction.entryPrice;
-  const priceMovement = Math.abs(priceDiff);
-  const percentageMove = (priceMovement / prediction.entryPrice) * 100;
 
-  const estimatedPnL = (positionValue * percentageMove) / 100; // This is absolute P&L value
-  const leveragedPnL = estimatedPnL * (isWin ? 1 : -1); // Signed P&L value
+  // ✅ Use actual API data when available, fallback to prediction data
+  const entryPrice = actualEntryPrice ?? prediction.entryPrice;
+  const priceDiff = actualExitPrice - entryPrice;
+  const priceMovement = Math.abs(priceDiff);
+  const percentageMove = (priceMovement / entryPrice) * 100;
+
+  // ✅ Calculate REAL P&L using actual trade data
+  const calculateRealPnL = (): { dollarPnL: number; percentagePnL: number; isRealData: boolean } => {
+
+
+    // First priority: Use real P&L from API if available
+    if (realPnLDollar !== undefined) {
+      const realPercentage = (Math.abs(realPnLDollar) / positionValue) * 100;
+      return {
+        dollarPnL: realPnLDollar,
+        percentagePnL: realPercentage,
+        isRealData: true
+      };
+    }
+
+    // Second priority: Calculate from actual prices and position size
+    if (actualEntryPrice && positionSize) {
+      const sizeNumber = parseFloat(positionSize);
+      const dollarPnL = (actualExitPrice - actualEntryPrice) * sizeNumber;
+      const percentagePnL = (Math.abs(dollarPnL) / positionValue) * 100;
+      return {
+        dollarPnL,
+        percentagePnL,
+        isRealData: true
+      };
+    }
+
+    // Fallback: Use percentage estimation (old method)
+    const estimatedPnL = (positionValue * percentageMove) / 100;
+    const leveragedPnL = estimatedPnL * (isWin ? 1 : -1);
+    return {
+      dollarPnL: leveragedPnL,
+      percentagePnL: percentageMove,
+      isRealData: false
+    };
+  };
+
+  const { dollarPnL, percentagePnL, isRealData } = calculateRealPnL();
 
   useEffect(() => {
     if (isOpen && !soundPlayed) {
@@ -73,7 +117,6 @@ export function GameCompletionModal({
     }
   }, [isOpen, shareableImageUrl]);
 
-  // Cleanup blob URL on component unmount
   useEffect(() => {
     return () => {
       if (shareableImageUrl) {
@@ -87,21 +130,22 @@ export function GameCompletionModal({
     setShareableImageUrl(null);
     setGenerationError(null);
 
-    const pnlPercentage = isWin ? percentageMove : -percentageMove;
-    const refCodeToUse = "HYPURR-REKT"; // Hardcoded ref code
+    // ✅ Use real P&L percentage for image generation
+    const pnlPercentage = isWin ? percentagePnL : -percentagePnL;
+    const refCodeToUse = "HYPURR-REKT";
 
     const params = {
-      pnlRatio: pnlPercentage, // e.g. 10.5 for 10.5% win, -5.2 for 5.2% loss
+      pnlRatio: pnlPercentage,
       leverage: leverage,
-      entry: prediction.entryPrice,
+      entry: entryPrice,  // ✅ Use actual entry price
       exit: actualExitPrice,
       isLong: prediction.direction === 'up',
-      tradingPair: prediction.asset.name.replace('/', ''), // e.g., "BTCUSD"
+      tradingPair: prediction.asset.name.replace('/', ''),
       refCode: refCodeToUse,
     };
 
     try {
-      console.log("Requesting trade image with params:", params);
+      console.log("Requesting trade image with REAL data params:", params);
       const imageBlob = await render(params);
       if (imageBlob) {
         setShareableImageUrl(URL.createObjectURL(imageBlob));
@@ -111,7 +155,6 @@ export function GameCompletionModal({
     } catch (error) {
       console.error("Error generating trade preview in modal:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      // Provide a more user-friendly error if it's about font loading
       if (errorMessage.includes("Failed to load fonts") || errorMessage.includes("Received HTML instead of font data")) {
         setGenerationError("Error: Could not load resources for image generation. Please try again or contact support if the issue persists.");
       } else {
@@ -121,7 +164,6 @@ export function GameCompletionModal({
       setIsGeneratingImage(false);
     }
   };
-
 
   const modalVariants = {
     hidden: { opacity: 0, scale: 0.8, y: 50 },
@@ -147,7 +189,7 @@ export function GameCompletionModal({
               exit="exit"
               className="space-y-6"
             >
-              {/* Header with dramatic result (existing code...) */}
+              {/* Header with result */}
               <motion.div
                 variants={childVariants}
                 className="text-center space-y-4"
@@ -169,12 +211,15 @@ export function GameCompletionModal({
                 </motion.div>
 
                 <motion.div variants={childVariants}>
-                  <div className={`text-4xl font-bold mb-2 ${isWin ? 'text-green-400' : 'text-red-400'
-                    }`}>
+                  <div className={`text-4xl font-bold mb-2 ${isWin ? 'text-green-400' : 'text-red-400'}`}>
                     {isWin ? 'YOU WON!' : 'YOU LOST'}
                   </div>
                   <div className="text-slate-400">
                     Game completed after {prediction.timeWindow} seconds
+                  </div>
+                  {/* ✅ Add indicator for real vs estimated data */}
+                  <div className="text-xs text-slate-500 mt-1">
+                    {isRealData ? '📊 Real trade data' : '📈 Estimated based on price movement'}
                   </div>
                 </motion.div>
 
@@ -186,12 +231,11 @@ export function GameCompletionModal({
                     <div className="text-center">
                       <div className="text-slate-400 text-sm">Entry</div>
                       <div className="text-white font-mono text-lg">
-                        ${prediction.entryPrice.toLocaleString()}
+                        ${entryPrice.toLocaleString()}
                       </div>
                     </div>
 
-                    <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400' // Use prediction.direction for arrow consistency
-                      }`}>
+                    <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
                       {prediction.direction === 'up' ? (
                         <TrendingUp className="w-6 h-6" />
                       ) : (
@@ -209,19 +253,35 @@ export function GameCompletionModal({
                   </div>
 
                   <div className="text-center">
-                    <div className={`text-2xl font-bold font-mono ${isWin ? 'text-green-400' : 'text-red-400'
-                      }`}>
+                    <div className={`text-2xl font-bold font-mono ${isWin ? 'text-green-400' : 'text-red-400'}`}>
                       {priceDiff >= 0 ? '+' : ''}${priceDiff.toFixed(2)}
                     </div>
-                    <div className={`text-sm ${isWin ? 'text-green-400' : 'text-red-400'
-                      }`}>
+                    <div className={`text-sm ${isWin ? 'text-green-400' : 'text-red-400'}`}>
                       {percentageMove.toFixed(3)}% move
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* ✅ Real P&L Display */}
+                <motion.div
+                  variants={childVariants}
+                  className={`bg-slate-800/30 rounded-lg p-4 border ${isWin ? 'border-green-500/30' : 'border-red-500/30'}`}
+                >
+                  <div className="text-center">
+                    <div className="text-slate-400 text-sm mb-2">
+                      {isRealData ? 'Actual P&L' : 'Estimated P&L'}
+                    </div>
+                    <div className={`text-3xl font-bold font-mono ${dollarPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {dollarPnL >= 0 ? '+' : ''}${dollarPnL.toFixed(2)}
+                    </div>
+                    <div className={`text-lg font-mono ${dollarPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {dollarPnL >= 0 ? '+' : ''}{percentagePnL.toFixed(2)}%
                     </div>
                   </div>
                 </motion.div>
               </motion.div>
 
-              {/* Trade Details Toggle (existing code...) */}
+              {/* Trade Details Toggle */}
               <motion.div variants={childVariants}>
                 <Button
                   variant="outline"
@@ -238,7 +298,7 @@ export function GameCompletionModal({
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="space-y-3 overflow-hidden" // Added overflow-hidden
+                      className="space-y-3 overflow-hidden"
                     >
                       <Card className="p-4 bg-slate-800/30 border-slate-700">
                         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -249,8 +309,7 @@ export function GameCompletionModal({
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-400">Direction:</span>
-                              <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'
-                                }`}>
+                              <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
                                 {prediction.direction === 'up' ? (
                                   <TrendingUp className="w-3 h-3" />
                                 ) : (
@@ -263,6 +322,13 @@ export function GameCompletionModal({
                               <span className="text-slate-400">Leverage:</span>
                               <span className="text-blue-400">{leverage}x</span>
                             </div>
+                            {/* ✅ Show actual position size if available */}
+                            {positionSize && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Size:</span>
+                                <span className="text-white font-mono">{positionSize}</span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="space-y-2">
@@ -275,11 +341,12 @@ export function GameCompletionModal({
                               <span className="text-white">{prediction.timeWindow}s</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-slate-400">Est. P&L:</span>
-                              <span className={`font-mono ${isWin ? 'text-green-400' : 'text-red-400'
-                                }`}>
-                                {leveragedPnL >= 0 ? '+' : ''}${leveragedPnL.toFixed(2)}
-                              </span>
+                              <span className="text-slate-400">Entry Price:</span>
+                              <span className="text-white font-mono">${entryPrice.toFixed(1)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Exit Price:</span>
+                              <span className="text-white font-mono">${actualExitPrice.toFixed(1)}</span>
                             </div>
                           </div>
                         </div>
@@ -313,7 +380,7 @@ export function GameCompletionModal({
                 )}
               </motion.div>
 
-              {/* Stats Update (existing code...) */}
+              {/* Stats Update */}
               <motion.div
                 variants={childVariants}
                 className="bg-slate-800/30 rounded-lg p-4"
@@ -358,10 +425,10 @@ export function GameCompletionModal({
                 )}
               </motion.div>
 
-              {/* Action Buttons (existing code...) */}
+              {/* Action Buttons */}
               <motion.div
                 variants={childVariants}
-                className="flex space-x-3 pt-2" // Added some top padding
+                className="flex space-x-3 pt-2"
               >
                 <Button
                   onClick={onPlayAgain}

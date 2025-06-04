@@ -7,36 +7,63 @@ interface DynamicBackgroundProps {
     children: ReactNode
     hasActivePosition: boolean
     gameState?: 'idle' | 'countdown' | 'active' | 'result'
+    currentPnL?: number // Add PnL prop
 }
 
 export function DynamicBackground({
     children,
     hasActivePosition,
-    gameState
+    gameState,
+    currentPnL = 0
 }: DynamicBackgroundProps) {
-    // All the images from your hypurr folder
-    const hypurrImages = [
+    // Categorized images based on emotion
+    const happyImages = [
         'cheers.png',
-        'dafuq.png',
-        'dead.png',
-        'fire panic.png',
-        'fire smirk.png',
-        'gm.png',
-        'handshake.png',
         'happy.png',
+        'handshake.png',
+        'gm.png',
         'liquid.png',
+        'saiyan.png',
+        'thumbs up.png',
+        'hearteyes.png',
+        'fire smirk.png',
+        'hypurr.png',
+        'in my lane.png',
+        'samurai.png',
+        'throne.png'
+    ]
+
+    const sadImages = [
+        'dead.png',
+        'cry.png',
+        'dafuq.png',
+        'fire panic.png',
+        'shook.png',
+        'thumbs down.png',
+        'thumbs up sad.png',
+        'sweating.png',
+        'teacher angry.png',
+        'tired.png'
+    ]
+
+    const neutralImages = [
         'meowdy.png',
         'purrfessor.png',
-        'saiyan.png',
-        'shook.png',
         'shrug.png',
         'smoking.png',
         'theories.png',
         'this is fine.png',
-        'thumbs down.png',
-        'thumbs up sad.png',
-        'thumbs up.png',
-        'cry.png'
+        'crystalball.png',
+        'meditation.png',
+        'notes.png',
+        'sherlock.png',
+        'teacher-bow.png',
+        'calls.png',
+        'karate.png',
+        'photo.png',
+        'ski.png',
+        'sleepy.png',
+        'snowboard.png'
     ]
 
     const [currentImageIndex, setCurrentImageIndex] = useState(0)
@@ -44,18 +71,27 @@ export function DynamicBackground({
     // Determine which background state we're in
     const isPositionActive = hasActivePosition || gameState === 'active' || gameState === 'countdown'
 
+    // Choose image array based on PnL
+    const getImageArray = () => {
+        if (currentPnL > 0) return happyImages
+        if (currentPnL < 0) return sadImages
+        return neutralImages // When PnL is exactly 0 or undefined
+    }
+
     // Cycle through images when position is active
     useEffect(() => {
         if (!isPositionActive) return
 
+        const imageArray = getImageArray()
+
         const interval = setInterval(() => {
             setCurrentImageIndex((prevIndex) =>
-                (prevIndex + 1) % hypurrImages.length
+                (prevIndex + 1) % imageArray.length
             )
-        }, 2000) // Change image every 2 seconds
+        }, 10000) // Increased from 2000 to 4000 (4 seconds)
 
         return () => clearInterval(interval)
-    }, [isPositionActive, hypurrImages.length])
+    }, [isPositionActive, currentPnL]) // Add currentPnL to dependencies
 
     // Reset to first image when position closes
     useEffect(() => {
@@ -63,6 +99,14 @@ export function DynamicBackground({
             setCurrentImageIndex(0)
         }
     }, [isPositionActive])
+
+    // Reset index when PnL changes category to avoid index out of bounds
+    useEffect(() => {
+        const imageArray = getImageArray()
+        if (currentImageIndex >= imageArray.length) {
+            setCurrentImageIndex(0)
+        }
+    }, [currentPnL, currentImageIndex])
 
     return (
         <div className="min-h-screen relative overflow-hidden">
@@ -76,7 +120,7 @@ export function DynamicBackground({
                     <div
                         className="absolute bottom-0 right-0 w-[600px] h-[600px] opacity-80"
                         style={{
-                            backgroundImage: `url('/assets/images/hypurr/meowdy.png')`, // Static idle image
+                            backgroundImage: `url('/assets/images/hypurr/sleepy.png')`, // Static idle image
                             backgroundSize: 'contain',
                             backgroundRepeat: 'no-repeat',
                             backgroundPosition: 'bottom right'
@@ -93,25 +137,35 @@ export function DynamicBackground({
             {/* Active position background */}
             {isPositionActive && (
                 <div className="absolute inset-0">
-                    {/* Cycling through all hypurr images */}
+                    {/* Cycling through emotion-based images */}
                     <div
                         className="absolute bottom-0 right-0 w-[600px] h-[600px] opacity-80 transition-all duration-500"
                         style={{
-                            backgroundImage: `url('/assets/images/hypurr/${hypurrImages[currentImageIndex]}')`,
+                            backgroundImage: `url('/assets/images/hypurr/${getImageArray()[currentImageIndex]}')`,
                             backgroundSize: 'contain',
                             backgroundRepeat: 'no-repeat',
                             backgroundPosition: 'bottom right'
                         }}
                     />
 
-                    {/* Active state overlay effects */}
+                    {/* Active state overlay effects - color based on PnL */}
                     <div className="absolute bottom-0 right-0 w-80 h-80 opacity-20">
-                        <div className="w-full h-full bg-gradient-radial from-green-400/30 via-emerald-500/15 to-transparent rounded-full blur-2xl animate-pulse" />
+                        <div className={`w-full h-full blur-2xl animate-pulse rounded-full ${currentPnL > 0
+                            ? 'bg-gradient-radial from-green-400/30 via-emerald-500/15 to-transparent'
+                            : currentPnL < 0
+                                ? 'bg-gradient-radial from-red-400/30 via-red-500/15 to-transparent'
+                                : 'bg-gradient-radial from-blue-400/30 via-blue-500/15 to-transparent'
+                            }`} />
                     </div>
 
                     {/* Additional pulsing effect for active state */}
                     <div className="absolute bottom-10 right-10 w-64 h-64 opacity-10">
-                        <div className="w-full h-full bg-gradient-conic from-green-400/20 via-yellow-400/20 to-green-400/20 rounded-full blur-xl animate-spin-slow" />
+                        <div className={`w-full h-full blur-xl animate-spin-slow rounded-full ${currentPnL > 0
+                            ? 'bg-gradient-conic from-green-400/20 via-yellow-400/20 to-green-400/20'
+                            : currentPnL < 0
+                                ? 'bg-gradient-conic from-red-400/20 via-orange-400/20 to-red-400/20'
+                                : 'bg-gradient-conic from-blue-400/20 via-purple-400/20 to-blue-400/20'
+                            }`} />
                     </div>
                 </div>
             )}

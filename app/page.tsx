@@ -8,6 +8,21 @@ export default function LandingPage() {
   const router = useRouter()
   const [currentCatIndex, setCurrentCatIndex] = useState(0)
 
+  // Add custom CSS for slow float animation
+  useEffect(() => {
+    const style = document.createElement('style')
+    style.textContent = `
+      @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-15px); }
+      }
+    `
+    document.head.appendChild(style)
+    return () => {
+      document.head.removeChild(style)
+    }
+  }, [])
+
   // Cat images for cycling - updated with full collection
   const catImages = [
     'crystalball.png', 'cheers.png', 'hearteyes.png', 'dafuq.png', 'dead.png', 'fire panic.png',
@@ -23,7 +38,7 @@ export default function LandingPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentCatIndex((prev) => (prev + 1) % catImages.length)
-    }, 2000)
+    }, 4000) // Changed from 2000 to 4000 (4 seconds)
 
     return () => clearInterval(interval)
   }, [catImages.length])
@@ -53,7 +68,7 @@ export default function LandingPage() {
       }
     }
 
-    const interval = setInterval(createFloatingCat, 3000)
+    const interval = setInterval(createFloatingCat, 5000) // Changed from 3000 to 5000
     return () => clearInterval(interval)
   }, [catImages])
 
@@ -110,16 +125,16 @@ export default function LandingPage() {
               <div className="space-y-8">
                 <div className="space-y-4">
                   <div className="text-emerald-400 font-semibold text-lg">
-                    Quick Crypto Trades
+                    Purr-fect Price Predictions
                   </div>
                   <h1 className="text-5xl lg:text-7xl font-black leading-tight">
                     <span className="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">
-                      14 SECOND
+                      15 SECOND
                     </span>
                     <span className="text-white">BETS</span>
                   </h1>
                   <p className="text-xl text-slate-300 leading-relaxed">
-                    Pick any crypto from Hyperliquid&apos;s full asset list. Go long or short with maximum leverage. Watch live orderbook data while your trade runs for 14, 30, or 60 seconds.
+                    Pick any crypto from Hyperliquid&apos;s full asset list. Go long or short with maximum leverage. Watch live orderbook data while your trade runs for 15, 30, or 60 seconds.
                   </p>
                 </div>
 
@@ -129,7 +144,7 @@ export default function LandingPage() {
                     <div className="w-8 h-8 mx-auto mb-2">
                       <img src="/assets/images/hypurr/liquid.png" alt="Speed" className="w-full h-full object-contain" />
                     </div>
-                    <div className="font-semibold text-emerald-400">14-60 Seconds</div>
+                    <div className="font-semibold text-emerald-400">15-60 Seconds</div>
                     <div className="text-sm text-slate-400">Quick trades</div>
                   </div>
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
@@ -187,7 +202,9 @@ export default function LandingPage() {
               <div className="relative flex items-center justify-center">
                 <div className="relative">
                   {/* Main Cat Display */}
-                  <div className="w-80 h-80 relative animate-bounce">
+                  <div className="w-80 h-80 relative" style={{
+                    animation: 'float 6s ease-in-out infinite'
+                  }}>
                     <img
                       src={`/assets/images/hypurr/${catImages[currentCatIndex]}`}
                       alt="Hyperliquid Cat"
@@ -218,7 +235,7 @@ export default function LandingPage() {
                   <img src="/assets/images/hypurr/crystalball.png" alt="Choose" className="w-16 h-16 object-contain" />
                 </div>
                 <h3 className="text-xl font-bold text-emerald-400">1. Pick</h3>
-                <p className="text-slate-300">Choose any crypto and set your timer (14, 30, or 60 seconds)</p>
+                <p className="text-slate-300">Choose any crypto and set your timer (15, 30, or 60 seconds)</p>
               </div>
 
               <div className="space-y-4">

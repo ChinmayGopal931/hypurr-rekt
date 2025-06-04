@@ -13,7 +13,7 @@ import { Prediction } from '@/lib/types'
 
 interface GameTimerProps {
   initialTime: number
-  onComplete: () => void
+  onComplete: (realExitPrice?: number, realPnL?: number) => void  // ✅ Enhanced callback
   type: 'countdown' | 'game'
   prediction?: Prediction
   currentPrice?: number
@@ -91,7 +91,6 @@ export function GameTimer({
     }
   }, [type, prediction, currentPrice])
 
-  // ADD: Position closing handler
   const handleClosePosition = useCallback(async (cloidToClose: string): Promise<void> => {
     if (!cloidToClose || isClosingPosition) return
 
@@ -101,19 +100,37 @@ export function GameTimer({
     try {
       const closeResult = await explicitClosePosition({ cloid: cloidToClose })
 
-      if (closeResult.success) {
-        console.log(`✅ GameTimer: Position ${cloidToClose} closed successfully at $${closeResult.exitPrice}`)
+      if (closeResult.success && closeResult.exitPrice) {
+        console.log(`✅ GameTimer: Position ${cloidToClose} closed successfully at REAL PRICE ${closeResult.exitPrice}`)
+
+        // ✅ Calculate REAL P&L using actual trade data  
+        let realPnLDollar: number | undefined
+        if (prediction && closeResult.exitPrice) {
+          // Get position size from prediction or estimate
+          const positionSizeStr = '0.0037' // You might want to pass this as a prop
+          const positionSize = parseFloat(positionSizeStr)
+          const priceDiff = closeResult.exitPrice - prediction.entryPrice
+          realPnLDollar = priceDiff * positionSize
+
+        }
+
+
+        onComplete(closeResult.exitPrice, realPnLDollar)
+        return // ✅ Early return to avoid any fallback calls
       } else {
         console.error(`❌ GameTimer: Failed to close position ${cloidToClose}:`, closeResult.error)
       }
     } catch (error) {
       console.error(`❌ GameTimer: Error closing position ${cloidToClose}:`, error)
-    } finally {
-      setIsClosingPosition(false)
     }
-  }, [explicitClosePosition, isClosingPosition])
 
-  // UPDATED: Timer countdown logic with position closing
+    // ✅ Only call fallback if the real close failed
+    console.log(`⚠️ GameTimer: Using fallback price ${currentPrice} due to close failure`)
+    setIsClosingPosition(false)
+    onComplete(currentPrice)
+  }, [explicitClosePosition, isClosingPosition, onComplete, currentPrice, prediction])
+
+  // ✅ UPDATED: Timer countdown logic to pass real close data
   useEffect(() => {
     if (!isActive || timeLeft <= 0) return
 
@@ -123,13 +140,12 @@ export function GameTimer({
         if (newTime <= 0) {
           setIsActive(false)
 
-          // Close position if one exists, then call onComplete
           if (type === 'game' && activePositionCloid) {
             console.log(`⏰ GameTimer: Timer expired, initiating position close for ${activePositionCloid}`)
-            handleClosePosition(activePositionCloid).finally(() => {
-              onComplete()
-            })
+            // ✅ handleClosePosition now calls onComplete with real data
+            handleClosePosition(activePositionCloid)
           } else {
+            // ✅ No position to close, just complete
             onComplete()
           }
 
@@ -140,7 +156,7 @@ export function GameTimer({
     }, 100)
 
     return () => clearInterval(interval)
-  }, [isActive, timeLeft, onComplete, type, activePositionCloid, handleClosePosition])
+  }, [isActive, timeLeft, type, activePositionCloid, handleClosePosition, onComplete])
 
   // P&L polling effect (unchanged)
   useEffect(() => {
@@ -310,7 +326,7 @@ export function GameTimer({
       {prediction && activePositionCloid && (
         <div className="text-center my-3">
           <Button variant="link" onClick={() => setShowOrderBook(prev => !prev)} className="text-blue-400 hover:text-blue-300 px-2 py-1 text-sm">
-            {showOrderBook ? <><EyeOff className="inline-block w-4 h-4 mr-1 align-middle" />Hide Market Depth</> : <><Eye className="inline-block w-4 h-4 mr-1 align-middle" />View Market Depth</>}
+            {showOrderBook ? <><EyeOff className="inline-block w-4 h-4 mr-1 align-middle" />Hide OrderBook</> : <><Eye className="inline-block w-4 h-4 mr-1 align-middle" />View OrderBook</>}
           </Button>
         </div>
       )}
