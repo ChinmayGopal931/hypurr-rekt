@@ -119,10 +119,8 @@ export default function LandingPage() {
                 rel="noopener noreferrer"
                 className="flex items-center space-x-2 text-slate-300 hover:text-emerald-400 transition-colors duration-200 group"
               >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm group-hover:shadow-lg group-hover:shadow-blue-500/25 transition-all duration-200">
-                  HL
-                </div>
-                <span className="hidden sm:inline text-sm font-medium">Hyperliquid</span>
+                <img src="/assets/HyperCore mint.svg" alt="Speed" className="w-20 h-20 object-contain" />
+
               </a>
               <div className="text-sm text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30">
                 TESTNET
