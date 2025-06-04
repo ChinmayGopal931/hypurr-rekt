@@ -119,7 +119,7 @@ export default function LandingPage() {
                 rel="noopener noreferrer"
                 className="flex items-center space-x-2 text-slate-300 hover:text-emerald-400 transition-colors duration-200 group"
               >
-                <img src="/assets/HyperCore mint.svg" alt="Speed" className="w-20 h-20 object-contain" />
+                <img src="/assets/HyperCore mint.svg" alt="Speed" className="w-20 h-8 object-contain" />
 
               </a>
               <div className="text-sm text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30">
