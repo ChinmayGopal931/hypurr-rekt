@@ -67,8 +67,17 @@ export interface GameResult {
   completed_at?: string
 }
 
+// Get environment variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-const supabaseUrl = 'https://aacarmbulfkztofvtzjb.supabase.co'
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhY2FybWJ1bGZrenRvZnZ0empiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNjU1MjEsImV4cCI6MjA2NDY0MTUyMX0.W47CTjiJJj1OhrebJYwTfH_Aauz5XFONAZm_Cb2wax4'
+// Validate environment variables
+if (!supabaseUrl) {
+  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+}
+
+if (!supabaseKey) {
+  throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey)

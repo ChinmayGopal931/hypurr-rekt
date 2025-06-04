@@ -83,7 +83,6 @@ export function GameInterface({
     gameStats,
     startGame,
     completeGame,
-    fetchUserStats
   } = useGameStats(address)
 
   // Main Hyperliquid hook with all functionality
@@ -430,9 +429,8 @@ export function GameInterface({
     setCompletionData(null)
     setActivePositionCloid(null)
     setActiveTradeData(null)
-    // Refresh stats after completing a game
-    fetchUserStats()
-  }, [setGameState, fetchUserStats])
+
+  }, [setGameState])
 
   const handleRefresh = useCallback((): void => {
     window.location.reload()

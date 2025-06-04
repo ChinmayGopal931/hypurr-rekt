@@ -111,8 +111,22 @@ export default function LandingPage() {
                 HYPURREKT
               </div>
             </div>
-            <div className="text-sm text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30">
-              TESTNET
+            <div className="flex items-center space-x-4">
+              {/* Hyperliquid Link */}
+              <a
+                href="https://hyperliquid.xyz"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center space-x-2 text-slate-300 hover:text-emerald-400 transition-colors duration-200 group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm group-hover:shadow-lg group-hover:shadow-blue-500/25 transition-all duration-200">
+                  HL
+                </div>
+                <span className="hidden sm:inline text-sm font-medium">Hyperliquid</span>
+              </a>
+              <div className="text-sm text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30">
+                TESTNET
+              </div>
             </div>
           </div>
         </header>
@@ -163,15 +177,6 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                {/* Additional Features */}
-                <div className="bg-slate-900/30 border border-emerald-500/10 rounded-xl p-6">
-                  <div className="flex items-center justify-center space-x-6 text-sm text-slate-300">
-                    <div className="flex items-center space-x-2">
-                      <img src="/assets/images/hypurr/throne.png" alt="Leaderboard" className="w-5 h-5" />
-                      <span>Win streak and climb the leaderboard</span>
-                    </div>
-                  </div>
-                </div>
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4">
@@ -258,7 +263,18 @@ export default function LandingPage() {
                   HYPURREKT
                 </div>
                 <span className="text-slate-400">•</span>
-                <span className="text-slate-400">Built on Hyperliquid</span>
+                <a
+                  href="https://hyperliquid.xyz"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-400 hover:text-emerald-400 transition-colors duration-200 flex items-center space-x-1"
+                >
+                  <span>Built on</span>
+                  <span className="font-semibold">Hyperliquid</span>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
               </div>
               <div className="flex items-center space-x-6 text-sm text-slate-400">
                 <span>Testnet</span>
