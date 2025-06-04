@@ -1,4 +1,4 @@
-// Updated GameInterface.tsx with typed hooks and best practices
+// Updated GameInterface.tsx with FIXED P&L calculation for long/short positions
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from './ui/card'
 import { AssetSelector } from './AssetSelector'
@@ -9,6 +9,7 @@ import { PredictionButtons } from './Prediction'
 import { ResultDisplay } from './ResultsDisplay'
 import { GameCompletionModal } from './CompleteModal'
 import { useHyperliquid, usePositions } from '@/hooks/useHyperliquid'
+import { useGameStats } from '@/hooks/useGameStats'
 import { AlertTriangle, DollarSign, RefreshCw, TrendingUp, Loader2 } from 'lucide-react'
 import { Badge } from './ui/badge'
 import { Alert, AlertDescription } from './ui/alert'
@@ -21,15 +22,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { OrderRequest, OrderResponse } from '@/service/hyperliquidOrders'
 import { useHyperliquidOrders } from '@/hooks/useHyperliquidTrading'
 import { useAccount } from 'wagmi'
-import { Prediction, Asset, GameState, GameStats } from '@/lib/types'
+import { Prediction, Asset, GameState } from '@/lib/types'
 
 interface GameInterfaceProps {
   gameState: GameState
   setGameState: (state: GameState) => void
   currentPrediction: Prediction | null
   setCurrentPrediction: (prediction: Prediction | null) => void
-  gameStats: GameStats
-  setGameStats: (stats: GameStats) => void
   soundEnabled: boolean
 }
 
@@ -38,6 +37,9 @@ interface CompletionData {
   exitPrice: number
   leverage: number
   positionValue: number
+  actualEntryPrice: number
+  positionSize: string
+  realPnLDollar?: number
 }
 
 interface OrderError {
@@ -46,23 +48,12 @@ interface OrderError {
   code?: string
 }
 
-interface CompletionData {
-  prediction: Prediction
-  exitPrice: number
-  leverage: number
-  positionValue: number
-  // ✅ ADD: Real trade data
-  actualEntryPrice: number    // Real fill price from API
-  positionSize: string        // Actual position size (e.g., "0.0037")
-  realPnLDollar?: number     // Real P&L in USD
-}
-
-// ✅ ADD: Enhanced state for tracking real trade data
 interface ActiveTradeData {
   cloid: string
-  entryPrice: number    // Real fill price
-  positionSize: string  // Real position size
+  entryPrice: number
+  positionSize: string
   leverage: number
+  gameId?: string // Database game ID
 }
 
 export function GameInterface({
@@ -70,8 +61,6 @@ export function GameInterface({
   setGameState,
   currentPrediction,
   setCurrentPrediction,
-  gameStats,
-  setGameStats,
 }: GameInterfaceProps) {
   // Local state with proper typing
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
@@ -89,6 +78,13 @@ export function GameInterface({
 
   const { address, isConnected: isWalletConnected, chain } = useAccount()
 
+  // Database hooks
+  const {
+    gameStats,
+    startGame,
+    completeGame,
+    fetchUserStats
+  } = useGameStats(address)
 
   // Main Hyperliquid hook with all functionality
   const {
@@ -105,8 +101,6 @@ export function GameInterface({
     mutations,
     placePredictionOrder
   } = useHyperliquidOrders(address, isWalletConnected, chain)
-
-
 
   // Separate positions hook for better performance
   const positionsQuery = usePositions(address)
@@ -140,7 +134,6 @@ export function GameInterface({
     }
   }, [activePositions.length, assets, selectedAsset])
 
-
   // Error handling utility with proper typing
   const handleOrderError = useCallback((error: unknown): OrderError => {
     if (error instanceof Error) {
@@ -164,64 +157,76 @@ export function GameInterface({
     return { message: 'An unknown error occurred', type: 'general' }
   }, [])
 
-  // Fixed GameInterface.tsx - Update handlePrediction to disable service auto-close
-
-
-  // Enhanced handleGameComplete with modal
-  const handleGameComplete = useCallback((
+  // Enhanced handleGameComplete with database integration - FIXED P&L calculation
+  const handleGameComplete = useCallback(async (
     result: 'win' | 'loss',
     exitPrice: number,
     positionValue: number,
-    // ✅ ADD: Optional real trade data parameters
     realEntryPrice?: number,
     realPositionSize?: string,
     realPnLDollar?: number
-  ): void => {
+  ): Promise<void> => {
     if (!currentPrediction) return
+
+    // ✅ Determine ACTUAL result based on real P&L data - FIXED for long/short
+    let actualResult: 'win' | 'loss' = result; // Default fallback
+
+    if (realPnLDollar !== undefined) {
+      // Use real P&L from API to determine win/loss
+      actualResult = realPnLDollar >= 0 ? 'win' : 'loss';
+    } else if (realEntryPrice && realPositionSize) {
+      // ✅ FIXED: Calculate P&L accounting for trade direction (long vs short)
+      const sizeNumber = parseFloat(realPositionSize);
+      const calculatedPnL = currentPrediction.direction === 'up'
+        ? (exitPrice - realEntryPrice) * sizeNumber  // LONG position
+        : (realEntryPrice - exitPrice) * sizeNumber; // SHORT position
+      actualResult = calculatedPnL >= 0 ? 'win' : 'loss';
+    } else {
+      // Fallback: determine based on price movement and prediction direction
+      const priceDiff = exitPrice - currentPrediction.entryPrice;
+      const didPriceGoUp = priceDiff > 0;
+      const predictedUp = currentPrediction.direction === 'up';
+      actualResult = didPriceGoUp === predictedUp ? 'win' : 'loss';
+    }
 
     const updatedPrediction = {
       ...currentPrediction,
-      result,
+      result: actualResult, // ✅ Use actual result based on real data
       exitPrice
     }
 
     setCurrentPrediction(updatedPrediction)
     setActivePositionCloid(null)
 
-    // ✅ Use real trade data when available
+    // Use real trade data when available
     const actualEntryPrice = realEntryPrice ?? activeTradeData?.entryPrice ?? currentPrediction.entryPrice
     const actualPositionSize = realPositionSize ?? activeTradeData?.positionSize
     const actualLeverage = activeTradeData?.leverage ?? selectedAsset?.maxLeverage ?? 1
+
+    // ✅ Complete the game in the database with ACTUAL result
+    if (activeTradeData?.gameId) {
+      try {
+        await completeGame(activeTradeData.gameId, actualResult, exitPrice, realPnLDollar)
+      } catch (error) {
+        console.error('❌ Failed to complete game in database:', error)
+      }
+    }
 
     setCompletionData({
       prediction: updatedPrediction,
       exitPrice,
       leverage: actualLeverage,
       positionValue,
-      // ✅ Pass real trade data to modal
       actualEntryPrice,
       positionSize: actualPositionSize ?? '0',
       realPnLDollar
     })
     setShowCompletionModal(true)
 
-    // Update stats
-    const newStats = { ...gameStats }
-    newStats.totalGames++
+    // Clear trade data
+    setActiveTradeData(null)
 
-    if (result === 'win') {
-      newStats.wins++
-      newStats.currentStreak++
-      newStats.bestStreak = Math.max(newStats.bestStreak, newStats.currentStreak)
-    } else {
-      newStats.losses++
-      newStats.currentStreak = 0
-    }
-
-    newStats.winRate = (newStats.wins / newStats.totalGames) * 100
-    setGameStats(newStats)
-
-  }, [currentPrediction, gameStats, setGameStats, activeTradeData, selectedAsset])
+  }, [currentPrediction, activeTradeData, selectedAsset, completeGame])
 
   const handlePrediction = useCallback(async (direction: 'up' | 'down'): Promise<void> => {
     if (!selectedAsset || !canPlaceOrder) return
@@ -241,7 +246,29 @@ export function GameInterface({
         }
 
         const positionCalc = await calculatePositionSize(selectedAsset.id, selectedAsset.maxLeverage)
-        console.log('Position calculation:', positionCalc)
+
+        // Create prediction object
+        const prediction: Prediction = {
+          id: Date.now().toString(),
+          asset: selectedAsset,
+          direction,
+          leverage: selectedAsset.maxLeverage,
+          entryPrice: currentPrice,
+          timeWindow,
+          timestamp: Date.now()
+        }
+
+        // Start game in database first
+        const gameId = await startGame(
+          prediction,
+          currentPrice,
+          positionCalc?.assetSize,
+          selectedAsset.maxLeverage
+        )
+
+        if (!gameId) {
+          throw new Error('Failed to create game record in database')
+        }
 
         const orderRequest: OrderRequest = {
           asset: selectedAsset.id,
@@ -252,7 +279,6 @@ export function GameInterface({
           leverage: selectedAsset.maxLeverage
         }
 
-        console.log('Placing prediction order:', orderRequest)
 
         const response: OrderResponse = await placePredictionOrder({
           request: orderRequest,
@@ -261,32 +287,30 @@ export function GameInterface({
 
         if (response.success) {
           if (response.fillInfo?.filled) {
-            // ✅ Store real trade data from API response
+            // Store real trade data from API response
             const realEntryPrice = response.fillInfo.fillPrice || currentPrice
             const realPositionSize = positionCalc?.assetSize || '0'
             const realLeverage = selectedAsset?.maxLeverage || 1
 
-            const prediction: Prediction = {
-              id: response.cloid || Date.now().toString(),
-              asset: selectedAsset,
-              direction,
-              leverage: realLeverage,
-              entryPrice: realEntryPrice, // ✅ Use real fill price
-              timeWindow,
-              timestamp: Date.now()
+            // Update prediction with real data
+            const updatedPrediction: Prediction = {
+              ...prediction,
+              entryPrice: realEntryPrice,
+              leverage: realLeverage
             }
 
-            setCurrentPrediction(prediction)
+            setCurrentPrediction(updatedPrediction)
 
             if (response.cloid) {
               setActivePositionCloid(response.cloid)
 
-              // ✅ Store real trade data for later use
+              // Store real trade data including database game ID
               setActiveTradeData({
                 cloid: response.cloid,
                 entryPrice: realEntryPrice,
                 positionSize: realPositionSize,
-                leverage: realLeverage
+                leverage: realLeverage,
+                gameId // Store database game ID
               })
             }
 
@@ -297,66 +321,39 @@ export function GameInterface({
 
             if (response.cloid) {
               onPositionResult(response.cloid, (result, exitPrice) => {
-
-                // ✅ Calculate real P&L from actual trade data
+                // ✅ FIXED: Calculate real P&L accounting for trade direction
                 let realPnLDollar: number | undefined
                 if (realPositionSize && realEntryPrice) {
                   const sizeNumber = parseFloat(realPositionSize)
-                  realPnLDollar = (exitPrice - realEntryPrice) * sizeNumber
+                  realPnLDollar = direction === 'up'
+                    ? (exitPrice - realEntryPrice) * sizeNumber  // LONG position
+                    : (realEntryPrice - exitPrice) * sizeNumber; // SHORT position
                 }
 
                 handleGameComplete(
                   result,
                   exitPrice,
                   positionCalc?.usdValue || 400,
-                  realEntryPrice,      // ✅ Pass real entry price
-                  realPositionSize,    // ✅ Pass real position size  
-                  realPnLDollar        // ✅ Pass calculated real P&L
-                )
-              })
-            }
-
-            setGameState('active')
-            setOrderError(null)
-            setShowSuccessFeedback(true)
-            setTimeout(() => setShowSuccessFeedback(false), 3000)
-
-            if (response.cloid) {
-              onPositionResult(response.cloid, (result, exitPrice) => {
-
-                // ✅ Calculate real P&L from actual trade data
-                let realPnLDollar: number | undefined
-                if (realPositionSize && realEntryPrice) {
-                  const sizeNumber = parseFloat(realPositionSize)
-                  realPnLDollar = (exitPrice - realEntryPrice) * sizeNumber
-                }
-
-                handleGameComplete(
-                  result,
-                  exitPrice,
-                  positionCalc?.usdValue || 400,
-                  realEntryPrice,      // ✅ Pass real entry price
-                  realPositionSize,    // ✅ Pass real position size  
-                  realPnLDollar        // ✅ Pass calculated real P&L
+                  realEntryPrice,
+                  realPositionSize,
+                  realPnLDollar
                 )
               })
             }
           } else {
-            // Handle resting order
-            const prediction: Prediction = {
-              id: response.cloid || Date.now().toString(),
-              asset: selectedAsset,
-              direction,
-              entryPrice: currentPrice,
-              timeWindow, // ✅ Keep the UI timeWindow for GameTimer
-              timestamp: Date.now()
-            }
-
+            // Handle resting order - use original prediction
             setCurrentPrediction(prediction)
 
             // Store the active position cloid for resting orders too
             if (response.cloid) {
               setActivePositionCloid(response.cloid)
+              setActiveTradeData({
+                cloid: response.cloid,
+                entryPrice: currentPrice,
+                positionSize: positionCalc?.assetSize || '0',
+                leverage: selectedAsset.maxLeverage,
+                gameId
+              })
             }
 
             setGameState('active')
@@ -405,11 +402,12 @@ export function GameInterface({
     getCurrentPrice,
     calculatePositionSize,
     handleGameComplete,
-    timeWindow, // Keep timeWindow in dependencies for UI
+    timeWindow,
     placePredictionOrder,
     setCurrentPrediction,
     onPositionResult,
     handleOrderError,
+    startGame
   ])
 
   // Handle modal close and play again
@@ -431,9 +429,10 @@ export function GameInterface({
     setCurrentPrediction(null)
     setCompletionData(null)
     setActivePositionCloid(null)
-    setActiveTradeData(null) // ✅ Clear trade data
-  }, [setGameState])
-
+    setActiveTradeData(null)
+    // Refresh stats after completing a game
+    fetchUserStats()
+  }, [setGameState, fetchUserStats])
 
   const handleRefresh = useCallback((): void => {
     window.location.reload()
@@ -449,12 +448,11 @@ export function GameInterface({
   // Destructure query states for clarity
   const { assetMetadata: assetMetadataQuery, priceData: priceDataQueryInfo } = queries;
 
-
   const showSkeleton =
     assetMetadataQuery.isLoading ||
     (assetMetadataQuery.isSuccess &&
-      (priceDataQueryInfo.isLoading || // Covers if useQuery for priceData is actively running its queryFn
-        (!priceDataQueryInfo.isError && assets.length === 0) // Covers waiting for WebSocket when queryFn is done but no assets yet
+      (priceDataQueryInfo.isLoading ||
+        (!priceDataQueryInfo.isError && assets.length === 0)
       )
     );
 
@@ -462,9 +460,7 @@ export function GameInterface({
     return <GameInterfaceSkeleton />;
   }
 
-  // Error Condition (after skeleton check):
-  // This `combinedErrorFromHook` is (assetMetadataQuery.error || priceDataQuery.error) from useHyperliquid.
-  // It will be true if either metadata fetching failed or price data fetching/processing failed.
+  // Error Condition
   if (error) {
     return (
       <div className="space-y-6">
@@ -472,22 +468,10 @@ export function GameInterface({
           <AlertTriangle className="h-4 w-4 text-red-400" />
           <AlertDescription className="text-red-400">
             <div className="font-semibold mb-1">Connection Failed</div>
-            {/* Display the actual error message from the hook */}
             <div className="text-sm">
               {typeof error === 'string' ? error :
                 (error as Error)?.message || 'An unknown connection error occurred.'}
             </div>
-            {/* Specific query errors if available and not redundant */}
-            {assetMetadataQuery.error && assetMetadataQuery.error.message !== (error as unknown as Error)?.message && (
-              <div className="text-xs mt-1 text-red-300">
-                Metadata error: {assetMetadataQuery.error.message}
-              </div>
-            )}
-            {priceDataQueryInfo.error && priceDataQueryInfo.error.message !== (error as unknown as Error)?.message && (
-              <div className="text-xs mt-1 text-red-300">
-                Price feed error: {priceDataQueryInfo.error.message}
-              </div>
-            )}
           </AlertDescription>
         </Alert>
         <Card className="p-8 bg-slate-900/50 border-slate-800">
@@ -496,7 +480,7 @@ export function GameInterface({
               Unable to load real-time market data.
             </div>
             <Button
-              onClick={handleRefresh} // Assuming handleRefresh is defined
+              onClick={handleRefresh}
               variant="outline"
               disabled={assetMetadataQuery.isRefetching || priceDataQueryInfo.isRefetching}
             >
@@ -509,11 +493,7 @@ export function GameInterface({
     );
   }
 
-  // No Assets Condition (after skeleton and error checks):
-  // At this point:
-  // - Not showing skeleton (implies metadata is loaded, and we're not in the initial phase of waiting for prices/assets via WebSocket).
-  // - No `combinedErrorFromHook` that would render the error display above.
-  // So, if `assets` is still empty, it means no tradable assets were found or streamed after everything settled.
+  // No Assets Condition
   if (assets.length === 0) {
     return (
       <div className="space-y-6">
@@ -547,7 +527,6 @@ export function GameInterface({
           gameStats={gameStats}
           leverage={completionData.leverage}
           positionValue={completionData.positionValue}
-          // ✅ Pass real trade data to modal
           actualEntryPrice={completionData.actualEntryPrice}
           positionSize={completionData.positionSize}
           realPnLDollar={completionData.realPnLDollar}
@@ -583,8 +562,7 @@ export function GameInterface({
         <AgentStatus userAddress={address} isConnected={isWalletConnected} />
       )}
 
-
-      {/* Order Error Display with Enhanced Typing */}
+      {/* Order Error Display */}
       {orderError && (
         <Alert className="border-red-500/50 bg-red-500/10">
           <AlertTriangle className="h-4 w-4 text-red-400" />
@@ -619,7 +597,7 @@ export function GameInterface({
         />
       )}
 
-      {/* Active Position Alert with Query States */}
+      {/* Active Position Alert */}
       {activePositions.length > 0 && (
         <Alert className="border-blue-500/50 bg-blue-500/10">
           <DollarSign className="h-4 w-4 text-blue-400" />
@@ -700,43 +678,49 @@ export function GameInterface({
                   {mutations.placePredictionOrder.isPending ? 'Sending order to Hyperliquid...' :
                     isPlacingOrder ? 'Processing order...' : 'Get ready!'}
                 </div>
-
               </div>
             </div>
           )}
 
-          {/* Only show timer if game is active AND modal is NOT showing */}
 
           {gameState === 'active' && currentPrediction && selectedAsset && !showCompletionModal && (
             <GameTimer
               initialTime={timeWindow}
-              onComplete={(realExitPrice?: number, realPnLDollar?: number) => {
-                // ✅ Use REAL exit price from API when available
+              onComplete={(realExitPrice?: number) => {
                 const finalExitPrice = realExitPrice ?? selectedAsset.price
-
-                // ✅ Get stored trade data
                 const realEntryPrice = activeTradeData?.entryPrice
                 const realPositionSize = activeTradeData?.positionSize
 
+                // Calculate real P&L if we have the data
+                let realPnLDollar: number | undefined
+                if (realEntryPrice && realPositionSize && finalExitPrice) {
+                  const sizeNumber = parseFloat(realPositionSize)
+                  realPnLDollar = currentPrediction.direction === 'up'
+                    ? (finalExitPrice - realEntryPrice) * sizeNumber  // LONG position
+                    : (realEntryPrice - finalExitPrice) * sizeNumber; // SHORT position
+                }
 
-                // ✅ Pass REAL data to handleGameComplete
                 handleGameComplete(
-                  'loss',
-                  finalExitPrice,         // Real API exit price: 105628
+                  'loss', // This will be recalculated based on real P&L in handleGameComplete
+                  finalExitPrice,
                   400,
-                  realEntryPrice,         // Real entry: 105651  
-                  realPositionSize,       // Real size: "0.00371"
-                  realPnLDollar          // Real P&L: -0.085
+                  realEntryPrice,
+                  realPositionSize,
+                  realPnLDollar
                 )
               }}
               type="game"
               prediction={currentPrediction}
               currentPrice={selectedAsset.price}
               existingPositionCloid={activePositionCloid}
+              // ✅ NEW: Pass real trade data to GameTimer (leverage is essential for fallback P&L)
+              actualEntryPrice={activeTradeData?.entryPrice}
+              positionSize={activeTradeData?.positionSize}
+              leverage={activeTradeData?.leverage ?? selectedAsset?.maxLeverage ?? 1}
+              positionValue={400} // Could also be calculated from positionSize if needed
             />
           )}
 
-          {/* Show completion message when transitioning */}
           {gameState === 'result' && !showCompletionModal && (
             <div className="text-center space-y-4">
               <div className="text-2xl font-bold text-white">Game Complete!</div>

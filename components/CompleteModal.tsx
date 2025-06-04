@@ -1,4 +1,4 @@
-// GameCompletionModal.tsx - Fixed to use actual API trade data
+// GameCompletionModal.tsx - Fixed P&L calculation for long/short positions
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
@@ -6,10 +6,8 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card } from './ui/card';
 import {
-  Trophy,
   TrendingUp,
   TrendingDown,
-  Target,
   Zap,
   PlayCircle,
   BarChart3,
@@ -27,7 +25,7 @@ interface GameCompletionModalProps {
   gameStats: GameStats;
   leverage: number;
   positionValue: number;
-  // ADD: New props for actual trade data
+  // Real trade data from API
   actualEntryPrice?: number;  // Real fill price from API
   positionSize?: string;      // Actual position size (e.g., "0.0037")
   realPnLDollar?: number;     // Real P&L in USD from API
@@ -52,51 +50,70 @@ export function GameCompletionModal({
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
-  const isWin = prediction.result === 'win';
-
   // ✅ Use actual API data when available, fallback to prediction data
   const entryPrice = actualEntryPrice ?? prediction.entryPrice;
   const priceDiff = actualExitPrice - entryPrice;
   const priceMovement = Math.abs(priceDiff);
   const percentageMove = (priceMovement / entryPrice) * 100;
 
-  // ✅ Calculate REAL P&L using actual trade data
-  const calculateRealPnL = (): { dollarPnL: number; percentagePnL: number; isRealData: boolean } => {
+  // GameCompletionModal.tsx - Fixed fallback calculation to include leverage
+  // This shows the corrected calculateRealResult function
 
-
+  const calculateRealResult = (): {
+    dollarPnL: number;
+    percentagePnL: number;
+    isRealData: boolean;
+    actualResult: 'win' | 'loss';
+  } => {
     // First priority: Use real P&L from API if available
     if (realPnLDollar !== undefined) {
       const realPercentage = (Math.abs(realPnLDollar) / positionValue) * 100;
       return {
         dollarPnL: realPnLDollar,
         percentagePnL: realPercentage,
-        isRealData: true
+        isRealData: true,
+        actualResult: realPnLDollar >= 0 ? 'win' : 'loss'
       };
     }
 
     // Second priority: Calculate from actual prices and position size
     if (actualEntryPrice && positionSize) {
       const sizeNumber = parseFloat(positionSize);
-      const dollarPnL = (actualExitPrice - actualEntryPrice) * sizeNumber;
+      // ✅ FIXED: Account for trade direction in P&L calculation
+      // For SHORT: profit when price goes DOWN (entry > exit)
+      // For LONG: profit when price goes UP (exit > entry)
+      const dollarPnL = prediction.direction === 'up'
+        ? (actualExitPrice - actualEntryPrice) * sizeNumber  // LONG position
+        : (actualEntryPrice - actualExitPrice) * sizeNumber; // SHORT position
       const percentagePnL = (Math.abs(dollarPnL) / positionValue) * 100;
       return {
         dollarPnL,
         percentagePnL,
-        isRealData: true
+        isRealData: true,
+        actualResult: dollarPnL >= 0 ? 'win' : 'loss'
       };
     }
 
-    // Fallback: Use percentage estimation (old method)
-    const estimatedPnL = (positionValue * percentageMove) / 100;
-    const leveragedPnL = estimatedPnL * (isWin ? 1 : -1);
+    // Fallback: Use percentage estimation based on direction prediction
+    const didPriceGoUp = priceDiff > 0;
+    const predictedUp = prediction.direction === 'up';
+    const isCorrectPrediction = didPriceGoUp === predictedUp;
+
+    // ✅ FIXED: Apply leverage to the fallback calculation
+    const estimatedPnL = (positionValue * percentageMove * leverage) / 100;
+    const leveragedPnL = estimatedPnL * (isCorrectPrediction ? 1 : -1);
+
     return {
       dollarPnL: leveragedPnL,
-      percentagePnL: percentageMove,
-      isRealData: false
+      percentagePnL: percentageMove * leverage, // ✅ FIXED: Apply leverage to percentage display
+      isRealData: false,
+      actualResult: isCorrectPrediction ? 'win' : 'loss'
     };
   };
+  const { dollarPnL, percentagePnL, isRealData, actualResult } = calculateRealResult();
 
-  const { dollarPnL, percentagePnL, isRealData } = calculateRealPnL();
+  // ✅ Use actual result based on real P&L data, not prediction.result
+  const isWin = actualResult === 'win';
 
   useEffect(() => {
     if (isOpen && !soundPlayed) {
@@ -189,7 +206,7 @@ export function GameCompletionModal({
               exit="exit"
               className="space-y-6"
             >
-              {/* Header with result */}
+              {/* Header with result - now based on actual P&L */}
               <motion.div
                 variants={childVariants}
                 className="text-center space-y-4"
@@ -203,16 +220,18 @@ export function GameCompletionModal({
                     : 'bg-red-500/20 text-red-400'
                     }`}
                 >
-                  {isWin ? (
-                    <Trophy className="w-10 h-10" />
-                  ) : (
-                    <Target className="w-10 h-10" />
-                  )}
+                  <img
+                    src={isWin ? '/assets/images/hypurr/throne.png' : '/assets/images/hypurr/cry.png'}
+                    alt={isWin ? "Happy cat" : "Sad cat"}
+                    className="w-22 h-22 object-contain"
+                  />
                 </motion.div>
 
                 <motion.div variants={childVariants}>
-                  <div className={`text-4xl font-bold mb-2 ${isWin ? 'text-green-400' : 'text-red-400'}`}>
-                    {isWin ? 'YOU WON!' : 'YOU LOST'}
+                  <div className="flex items-center justify-center gap-3 mb-2">
+                    <div className={`text-4xl font-bold ${isWin ? 'text-green-400' : 'text-red-400'}`}>
+                      {isWin ? 'YOU WON!' : 'YOU LOST'}
+                    </div>
                   </div>
                   <div className="text-slate-400">
                     Game completed after {prediction.timeWindow} seconds
@@ -253,16 +272,16 @@ export function GameCompletionModal({
                   </div>
 
                   <div className="text-center">
-                    <div className={`text-2xl font-bold font-mono ${isWin ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className={`text-2xl font-bold font-mono ${priceDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {priceDiff >= 0 ? '+' : ''}${priceDiff.toFixed(2)}
                     </div>
-                    <div className={`text-sm ${isWin ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className={`text-sm ${priceDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {percentageMove.toFixed(3)}% move
                     </div>
                   </div>
                 </motion.div>
 
-                {/* ✅ Real P&L Display */}
+                {/* ✅ Real P&L Display - now determines the win/loss correctly */}
                 <motion.div
                   variants={childVariants}
                   className={`bg-slate-800/30 rounded-lg p-4 border ${isWin ? 'border-green-500/30' : 'border-red-500/30'}`}
@@ -347,6 +366,13 @@ export function GameCompletionModal({
                             <div className="flex justify-between">
                               <span className="text-slate-400">Exit Price:</span>
                               <span className="text-white font-mono">${actualExitPrice.toFixed(1)}</span>
+                            </div>
+                            {/* ✅ Show data source */}
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Data:</span>
+                              <span className={`text-xs ${isRealData ? 'text-green-400' : 'text-yellow-400'}`}>
+                                {isRealData ? 'API' : 'Estimated'}
+                              </span>
                             </div>
                           </div>
                         </div>

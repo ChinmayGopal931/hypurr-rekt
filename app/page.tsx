@@ -167,16 +167,8 @@ export default function LandingPage() {
                 <div className="bg-slate-900/30 border border-emerald-500/10 rounded-xl p-6">
                   <div className="flex items-center justify-center space-x-6 text-sm text-slate-300">
                     <div className="flex items-center space-x-2">
-                      <img src="/assets/images/hypurr/purrfessor.png" alt="Live Data" className="w-5 h-5" />
-                      <span>Live orderbook display</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <img src="/assets/images/hypurr/samurai.png" alt="Testnet Funds" className="w-5 h-5" />
-                      <span>Get testnet funds from HL</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
                       <img src="/assets/images/hypurr/throne.png" alt="Leaderboard" className="w-5 h-5" />
-                      <span>Leaderboard coming soon</span>
+                      <span>Win streak and climb the leaderboard</span>
                     </div>
                   </div>
                 </div>

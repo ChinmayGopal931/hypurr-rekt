@@ -1,7 +1,7 @@
 // Updated WalletConnection.tsx with typed hooks and best practices
 import React, { JSX, useCallback, useMemo } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { useAccount, useBalance } from 'wagmi'
+import { useAccount } from 'wagmi'
 import { Card } from './ui/card'
 import { Badge } from './ui/badge'
 import { Alert, AlertDescription } from './ui/alert'
@@ -21,7 +21,6 @@ interface FormattedPosition {
 
 export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.Element {
   const { address, isConnected, chain } = useAccount()
-  const { data: balance, isLoading: isBalanceLoading } = useBalance({ address })
 
   // Use typed positions hook for better performance
   const positionsQuery = usePositions(address)
@@ -51,12 +50,6 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
     }))
   }, [activePositions])
 
-  // Memoized balance display
-  const balanceDisplay = useMemo(() => {
-    if (isBalanceLoading) return 'Loading...'
-    if (!balance) return 'Unable to load'
-    return `${parseFloat(balance.formatted).toFixed(4)} ${balance.symbol}`
-  }, [balance, isBalanceLoading])
 
   // Network status
   const networkStatus = useMemo(() => {
@@ -100,15 +93,6 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
               <div className="text-xs text-slate-400 space-y-0.5">
                 {/* Balance and Network Info */}
                 <div className="flex items-center space-x-2">
-                  <span>Balance:</span>
-                  {isBalanceLoading ? (
-                    <div className="flex items-center space-x-1">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Loading...</span>
-                    </div>
-                  ) : (
-                    <span className="font-mono">{balanceDisplay}</span>
-                  )}
                   {networkStatus.name && (
                     <>
                       <span className="text-slate-500">•</span>

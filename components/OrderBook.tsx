@@ -237,9 +237,6 @@ export function OrderBook({ coin, currentPrice, isWinning }: OrderBookProps) {
                             </span>
                         </div>
                     </div>
-                    <div className="text-slate-500">
-                        {processedData.bids.length + processedData.asks.length} levels
-                    </div>
                 </div>
             </div>
         </motion.div>

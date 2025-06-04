@@ -1,9 +1,9 @@
 // src/hooks/useHyperliquid.ts
 import { useQuery, useQueryClient, UseQueryResult } from '@tanstack/react-query'
 import { useCallback } from 'react'
-import { hyperliquid, HyperliquidAsset, OrderBook } from '@/service/hyperliquid'
+import { HyperliquidAsset, OrderBook } from '@/service/hyperliquid'
 import { hyperliquidOrders, PositionInfo, RealTimePnLData } from '@/service/hyperliquidOrders'
-import { getRealTimePnL, handleApiError, hyperliquidKeys, PriceHistory, processOrderBook, useAssetMetadata } from '@/lib/utils'
+import { getRealTimePnL, handleApiError, hyperliquidKeys, PriceHistory, useAssetMetadata } from '@/lib/utils'
 import { useOrderBook, usePriceData } from './useHyperliquidSubscription'
 import { Asset } from '@/lib/types'
 
@@ -70,7 +70,6 @@ export interface UseHyperliquidReturn {
 
   // P&L functions
   getRealTimePnL: (userAddress: string) => Promise<RealTimePnLData | null>
-  getAssetPnL: (userAddress: string, asset: string) => Promise<AssetPnLResult | null>
   startPnLPolling: (
     userAddress: string,
     callback: (pnlData: RealTimePnLData | null) => void,
@@ -79,11 +78,6 @@ export interface UseHyperliquidReturn {
 
   // Position calculations
   calculatePositionSize: (asset: string, leverage: number) => Promise<PositionSizeResult | null>
-
-  // Order book functions
-  getOrderBook: (coin: string) => ProcessedOrderBook | null
-  subscribeToOrderBook: (coin: string) => void
-  unsubscribeFromOrderBook: (coin: string) => void
 
   // Query states for granular control
   queries: UseHyperliquidQueries
@@ -239,9 +233,6 @@ export function useHyperliquid(address: `0x${string}` | undefined): UseHyperliqu
     return pnlQuery.data || await getRealTimePnL(userAddress)
   }, [pnlQuery.data])
 
-  const getAssetPnL = useCallback(async (userAddress: string, asset: string): Promise<AssetPnLResult | null> => {
-    return await hyperliquidOrders.getAssetPnL(userAddress, asset)
-  }, [])
 
   const startPnLPolling = useCallback((
     userAddress: string,
@@ -258,23 +249,7 @@ export function useHyperliquid(address: `0x${string}` | undefined): UseHyperliqu
     return unsubscribe
   }, [queryClient])
 
-  // Order book functions
-  const getOrderBook = useCallback((coin: string): ProcessedOrderBook | null => {
-    const orderBookData = queryClient.getQueryData<OrderBook>(hyperliquidKeys.orderBook(coin))
-    return processOrderBook(orderBookData || null)
-  }, [queryClient])
 
-  const subscribeToOrderBook = useCallback((coin: string): void => {
-    hyperliquid.subscribeToL2Book(coin, (orderBook: OrderBook) => {
-      queryClient.setQueryData(hyperliquidKeys.orderBook(coin), orderBook)
-    })
-  }, [queryClient])
-
-  const unsubscribeFromOrderBook = useCallback((coin: string): void => {
-    hyperliquid.unsubscribeFromL2Book(coin)
-    // Optionally clear the cached data
-    queryClient.removeQueries({ queryKey: hyperliquidKeys.orderBook(coin) })
-  }, [queryClient])
 
   return {
     // Core data - fastest updates via WebSocket + React Query
@@ -299,16 +274,10 @@ export function useHyperliquid(address: `0x${string}` | undefined): UseHyperliqu
 
     // P&L functions
     getRealTimePnL,
-    getAssetPnL,
     startPnLPolling,
 
     // Position calculations
     calculatePositionSize,
-
-    // Order book functions
-    getOrderBook,
-    subscribeToOrderBook,
-    unsubscribeFromOrderBook,
 
     // Query states for granular control
     queries: {

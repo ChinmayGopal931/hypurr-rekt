@@ -1,16 +1,13 @@
 // src/components/Header.tsx
-import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Volume2, VolumeX, TrendingUp } from 'lucide-react'
-import { GameStats } from '@/lib/types'
 
 interface HeaderProps {
-  gameStats: GameStats
   soundEnabled: boolean
   setSoundEnabled: (enabled: boolean) => void
 }
 
-export function Header({ gameStats, soundEnabled, setSoundEnabled }: HeaderProps) {
+export function Header({ soundEnabled, setSoundEnabled }: HeaderProps) {
   return (
     <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
@@ -25,36 +22,6 @@ export function Header({ gameStats, soundEnabled, setSoundEnabled }: HeaderProps
             </div>
           </div>
 
-          {/* Quick Stats */}
-          <div className="hidden md:flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-slate-400 text-sm">W/L:</span>
-              <Badge variant="outline" className="text-green-400 border-green-400">
-                {gameStats.wins}
-              </Badge>
-              <span className="text-slate-500">/</span>
-              <Badge variant="outline" className="text-red-400 border-red-400">
-                {gameStats.losses}
-              </Badge>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <span className="text-slate-400 text-sm">Streak:</span>
-              <Badge
-                variant={gameStats.currentStreak > 0 ? "default" : "secondary"}
-                className={gameStats.currentStreak > 0 ? "bg-green-500" : ""}
-              >
-                {gameStats.currentStreak}
-              </Badge>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <span className="text-slate-400 text-sm">Win Rate:</span>
-              <Badge variant="outline" className="text-blue-400 border-blue-400">
-                {gameStats.winRate.toFixed(1)}%
-              </Badge>
-            </div>
-          </div>
 
           {/* Controls */}
           <div className="flex items-center space-x-4">

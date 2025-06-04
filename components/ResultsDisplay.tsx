@@ -18,20 +18,22 @@ export function ResultDisplay({ prediction, onPlayAgain }: ResultDisplayProps) {
 
   const resultConfig = {
     win: {
-      title: '🎉 YOU WON!',
+      title: 'YOU WON!',
       subtitle: 'Great prediction!',
       bgColor: 'bg-gradient-to-r from-green-500 to-emerald-600',
       textColor: 'text-green-400',
       borderColor: 'border-green-400',
-      icon: <Trophy className="w-12 h-12 text-yellow-400" />
+      icon: <Trophy className="w-12 h-12 text-yellow-400" />,
+      catImage: '/assets/images/hypurr/throne.png'
     },
     loss: {
-      title: '💔 YOU LOST',
+      title: 'YOU LOST',
       subtitle: 'Better luck next time!',
       bgColor: 'bg-gradient-to-r from-red-500 to-rose-600',
       textColor: 'text-red-400',
       borderColor: 'border-red-400',
-      icon: <X className="w-12 h-12 text-red-400" />
+      icon: <X className="w-12 h-12 text-red-400" />,
+      catImage: '/assets/images/hypurr/cry.png'
     }
   }
 
@@ -134,8 +136,15 @@ export function ResultDisplay({ prediction, onPlayAgain }: ResultDisplayProps) {
           ${isWin ? 'bg-green-500/10' : 'bg-red-500/10'}
         `}
       >
-        <div className="text-white font-bold text-lg">
-          {isWin ? '✅ CORRECT PREDICTION' : '❌ WRONG PREDICTION'}
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <img
+            src={config.catImage}
+            alt={isWin ? "Happy cat" : "Sad cat"}
+            className="w-8 h-8 object-contain"
+          />
+          <div className="text-white font-bold text-lg">
+            {isWin ? 'CORRECT PREDICTION' : 'WRONG PREDICTION'}
+          </div>
         </div>
         <div className="text-slate-400 text-sm">
           Price moved {absolutePercentage.toFixed(2)}% {priceDiff >= 0 ? 'UP' : 'DOWN'}

@@ -284,9 +284,7 @@ export class HyperliquidOrderService {
       }
 
       const isClosingLong = position.direction === 'up'
-      const aggressivePriceMultiplier = isClosingLong ? 0.999 : 1.001
-      const aggressivePriceRaw = currentPrice * aggressivePriceMultiplier
-      const aggressivePrice = formatPrice(aggressivePriceRaw, assetConfig.szDecimals)
+      const aggressivePrice = formatPrice(currentPrice, assetConfig.szDecimals)
 
       if (!aggressivePrice || !positionSize) {
         console.warn(`⚠️ Missing required values, using market price: aggressivePrice=${aggressivePrice}, size=${positionSize}`)
@@ -575,13 +573,12 @@ export class HyperliquidOrderService {
       }
     }
   }
-
   async placePredictionOrder(
     request: OrderRequest,
     signTypedDataAsync: SignTypedDataFunction,
     userAddress: string
   ): Promise<OrderResponse> {
-    console.log('🔍 Starting placePredictionOrder with aggressive limit orders:', {
+    console.log('🔍 Starting placePredictionOrder with market price limit orders:', {
       asset: request.asset,
       direction: request.direction,
       price: request.price,
@@ -657,22 +654,21 @@ export class HyperliquidOrderService {
       console.log(`✅ STEP 1 COMPLETE: ${request.asset} leverage set to ${targetLeverage}x`)
 
       const expectedPositionValue = 10 * targetLeverage
-      const aggressivePriceMultiplier = request.direction === 'up' ? 1.02 : 0.98;
-      const aggressivePriceRaw = request.price * aggressivePriceMultiplier;
-      const aggressivePrice = formatPrice(aggressivePriceRaw, assetConfig.szDecimals);
+      // FIXED: Use market price for fair execution instead of aggressive pricing
+      const orderPrice = formatPrice(request.price, assetConfig.szDecimals);
       const orderSize = calculateOrderSizeWithTrueLeverage(
-        aggressivePriceRaw,
+        request.price, // Use original market price for size calculation
         assetConfig.szDecimals,
         targetLeverage
       )
-      const actualOrderValue = parseFloat(orderSize) * parseFloat(aggressivePrice);
+      const actualOrderValue = parseFloat(orderSize) * parseFloat(orderPrice);
       console.log('💰 TRUE LEVERAGE ORDER SUMMARY:', {
         marginUsed: `$${HyperliquidOrderService.MARGIN_AMOUNT}`,
         leverage: `${targetLeverage}x`,
         expectedPositionValue: `$${expectedPositionValue}`,
         actualPositionValue: `$${actualOrderValue.toFixed(2)}`,
         orderSize: orderSize,
-        aggressivePrice: aggressivePrice,
+        orderPrice: orderPrice,
         difference: `$${Math.abs(actualOrderValue - expectedPositionValue).toFixed(2)}`,
         accuracyPercentage: `${((actualOrderValue / expectedPositionValue) * 100).toFixed(1)}%`
       });
@@ -689,13 +685,13 @@ export class HyperliquidOrderService {
 
       const marketPrice = formatPrice(request.price, assetConfig.szDecimals)
       const cloid = generateCloid()
-      console.log('📊 Aggressive order parameters:', {
+      console.log('📊 Market price order parameters:', {
         asset: request.asset,
         assetId: assetConfig.assetId,
         direction: request.direction,
         marketPrice: marketPrice,
-        aggressivePrice: aggressivePrice,
-        priceAdjustment: `${request.direction === 'up' ? '+' : '-'}2%`,
+        orderPrice: orderPrice,
+        priceAdjustment: 'None (using market price)',
         finalOrderSize: orderSize,
         actualOrderValue: actualOrderValue,
         timeWindow: request.timeWindow,
@@ -706,7 +702,7 @@ export class HyperliquidOrderService {
         const order = {
           a: assetConfig.assetId,
           b: request.direction === 'up',
-          p: aggressivePrice,
+          p: orderPrice, // Use market price instead of aggressive price
           s: orderSize,
           r: false,
           t: { limit: { tif: 'Ioc' } },
@@ -719,9 +715,9 @@ export class HyperliquidOrderService {
         };
         const nonce = Date.now();
         console.log(`⏱️ Using timestamp as nonce: ${nonce}`);
-        console.log('📊 Aggressive limit order created:', JSON.stringify(order, null, 2));
+        console.log('📊 Market price limit order created:', JSON.stringify(order, null, 2));
         const agentWallet = await this.initializeAgent(address, signTypedDataAsync);
-        console.log('🔍 Signing aggressive order with agent...');
+        console.log('🔍 Signing market price order with agent...');
         const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`);
         const signature = await signL1Action({
           wallet: account,
@@ -729,7 +725,7 @@ export class HyperliquidOrderService {
           nonce,
           isTestnet: this.useTestnet
         });
-        console.log('✅ Aggressive order signed with agent');
+        console.log('✅ Market price order signed with agent');
         const exchangeRequest = { action, signature, nonce };
         const response = await fetch(`${this.getApiUrl()}/exchange`, {
           method: 'POST',
@@ -742,7 +738,7 @@ export class HyperliquidOrderService {
         })
         const responseText = await response.text()
         if (!response.ok) {
-          console.error('❌ Aggressive order request failed:', {
+          console.error('❌ Market price order request failed:', {
             status: response.status,
             statusText: response.statusText,
             response: responseText
@@ -758,10 +754,10 @@ export class HyperliquidOrderService {
           console.error('Failed to parse response:', responseText)
           throw new Error('Invalid JSON response from exchange')
         }
-        console.log('📥 Received aggressive order response:', JSON.stringify(result, null, 2))
+        console.log('📥 Received market price order response:', JSON.stringify(result, null, 2))
         if (result.status !== 'ok') {
           const errorMsg = result.error?.message || JSON.stringify(result)
-          console.error('Aggressive order failed with response:', errorMsg)
+          console.error('Market price order failed with response:', errorMsg)
           throw new Error(`Order failed: ${errorMsg}`)
         }
 
@@ -772,7 +768,7 @@ export class HyperliquidOrderService {
         }
 
         if (orderStatus.filled) {
-          console.log('✅ Aggressive order filled immediately:', orderStatus)
+          console.log('✅ Market price order filled immediately:', orderStatus)
           const fillData = orderStatus.filled
           const fillPrice = parseFloat(fillData.avgPx || '0')
           const fillSize = fillData.totalSz || orderSize
@@ -822,7 +818,7 @@ export class HyperliquidOrderService {
             }
           }
         } else if (orderStatus.resting) {
-          console.warn('⚠️ Aggressive order resting (unusual - might need more aggressive pricing):', orderStatus)
+          console.warn('⚠️ Market price order resting (might need better timing):', orderStatus)
           const restingData = orderStatus.resting
           const orderId = restingData.oid
           const position: PositionInfo = {
@@ -830,7 +826,7 @@ export class HyperliquidOrderService {
             cloid: cloid,
             asset: request.asset,
             direction: request.direction,
-            entryPrice: parseFloat(aggressivePrice),
+            entryPrice: parseFloat(orderPrice),
             size: orderSize,
             timestamp: Date.now(),
             timeWindow: request.timeWindow,
@@ -859,7 +855,7 @@ export class HyperliquidOrderService {
             }
           }
         } else {
-          console.error('Aggressive order not filled:', orderStatus)
+          console.error('Market price order not filled:', orderStatus)
           return {
             success: false,
             error: `Order not filled: ${JSON.stringify(orderStatus)}`,
@@ -884,7 +880,6 @@ export class HyperliquidOrderService {
       }
     }
   }
-
   async getAssetPnL(userAddress: string, asset: string): Promise<{
     unrealizedPnl: number
     returnOnEquity: number

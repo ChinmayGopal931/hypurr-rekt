@@ -1,17 +1,149 @@
+// Updated StatsPanel.tsx - Always use manual stats calculation
+'use client'
+
+import { useState, useEffect } from 'react'
 import { Card } from './ui/card'
 import { Badge } from './ui/badge'
 import { Progress } from './ui/progress'
-import { Trophy, Target, TrendingUp, Flame, BarChart3 } from 'lucide-react'
+import { Button } from './ui/button'
+import {
+  Trophy,
+  Target,
+  TrendingUp,
+  Flame,
+  BarChart3,
+  RefreshCw,
+  Users,
+  Calendar,
+  Loader2,
+  AlertTriangle
+} from 'lucide-react'
 import { Prediction } from '@/lib/types'
-import { GameStats } from '@/lib/types'
+import { GameRecord, useGameStats, UserStats } from '@/hooks/useGameStats'
 
 interface StatsPanelProps {
-  gameStats: GameStats
   currentPrediction?: Prediction | null
+  userAddress?: string
 }
 
-export function StatsPanel({ gameStats, currentPrediction }: StatsPanelProps) {
-  const winRate = gameStats.totalGames > 0 ? (gameStats.wins / gameStats.totalGames) * 100 : 0
+export function StatsPanel({ currentPrediction, userAddress }: StatsPanelProps) {
+  const [recentGames, setRecentGames] = useState<GameRecord[]>([])
+  const [leaderboard, setLeaderboard] = useState<UserStats[]>([])
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [isLoadingExtras, setIsLoadingExtras] = useState(false)
+  const [hasMounted, setHasMounted] = useState(false)
+
+  // ✅ Fix hydration by ensuring consistent rendering
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
+
+  const {
+    userStats,
+    gameStats,
+    isLoading,
+    error,
+    loadUserStats, // ✅ SIMPLIFIED: Only one function for loading stats
+    getRecentGames,
+    getLeaderboard
+  } = useGameStats(userAddress)
+
+  // Load additional data when user expands sections
+  const loadExtras = async () => {
+    if (!userAddress) return
+
+    setIsLoadingExtras(true)
+    try {
+      const [recent, leaders] = await Promise.all([
+        getRecentGames(5),
+        getLeaderboard(10)
+      ])
+      setRecentGames(recent)
+      setLeaderboard(leaders)
+    } catch (err) {
+      console.error('Error loading extra data:', err)
+    } finally {
+      setIsLoadingExtras(false)
+    }
+  }
+
+  // Load extras when component mounts if user is connected
+  useEffect(() => {
+    if (userAddress && !isLoading && hasMounted) {
+      loadExtras()
+    }
+  }, [userAddress, isLoading, hasMounted])
+
+  // ✅ Prevent hydration mismatch by showing loading state until mounted
+  if (!hasMounted) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-slate-900/50 border-slate-800">
+          <div className="text-center space-y-4">
+            <Loader2 className="w-8 h-8 text-blue-400 mx-auto animate-spin" />
+            <div className="text-slate-400">Loading...</div>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!userAddress) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-slate-900/50 border-slate-800">
+          <div className="text-center space-y-4">
+            <Target className="w-8 h-8 text-slate-400 mx-auto" />
+            <div className="text-slate-400">
+              <div className="font-semibold mb-1">Connect Wallet</div>
+              <div className="text-sm">Connect your wallet to track your game statistics</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-slate-900/50 border-slate-800">
+          <div className="text-center space-y-4">
+            <Loader2 className="w-8 h-8 text-blue-400 mx-auto animate-spin" />
+            <div className="text-slate-400">Loading your stats...</div>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-slate-900/50 border-slate-800">
+          <div className="text-center space-y-4">
+            <AlertTriangle className="w-8 h-8 text-red-400 mx-auto" />
+            <div className="text-red-400">
+              <div className="font-semibold mb-1">Error Loading Stats</div>
+              <div className="text-sm">{error}</div>
+            </div>
+            <Button
+              onClick={loadUserStats}
+              variant="outline"
+              size="sm"
+              className="text-red-400 border-red-400 hover:bg-red-400/10"
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Retry
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  const winRate = gameStats.winRate
 
   return (
     <div className="space-y-6">
@@ -50,8 +182,8 @@ export function StatsPanel({ gameStats, currentPrediction }: StatsPanelProps) {
             </div>
 
             <div className="flex justify-between">
-              <span className="text-slate-400">Duration:</span>
-              <span className="text-white">{currentPrediction.timeWindow}s</span>
+              <span className="text-slate-400">Leverage:</span>
+              <span className="text-white">{currentPrediction.leverage || currentPrediction.asset.maxLeverage}x</span>
             </div>
           </div>
         </Card>
@@ -59,9 +191,21 @@ export function StatsPanel({ gameStats, currentPrediction }: StatsPanelProps) {
 
       {/* Game Statistics */}
       <Card className="p-4 bg-slate-900/50 border-slate-800">
-        <div className="flex items-center space-x-2 mb-4">
-          <BarChart3 className="w-5 h-5 text-green-400" />
-          <h3 className="font-semibold text-white">Game Stats</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <BarChart3 className="w-5 h-5 text-green-400" />
+            <h3 className="font-semibold text-white">Your Stats</h3>
+          </div>
+          {/* ✅ SIMPLIFIED: Only one refresh button */}
+          <Button
+            onClick={loadUserStats}
+            variant="ghost"
+            size="sm"
+            disabled={isLoading}
+            title="Refresh stats from games"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
         <div className="space-y-4">
@@ -94,6 +238,17 @@ export function StatsPanel({ gameStats, currentPrediction }: StatsPanelProps) {
               <div className="text-red-400 text-xs">LOSSES</div>
             </div>
           </div>
+
+          {/* Total P&L */}
+          {userStats && userStats.total_pnl !== 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">Total P&L:</span>
+              <span className={`font-bold ${userStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                ${userStats.total_pnl.toFixed(2)}
+              </span>
+            </div>
+          )}
+
         </div>
       </Card>
 
@@ -126,6 +281,55 @@ export function StatsPanel({ gameStats, currentPrediction }: StatsPanelProps) {
           </div>
         </div>
       </Card>
+
+      {/* Recent Games */}
+      {recentGames.length > 0 && (
+        <Card className="p-4 bg-slate-900/50 border-slate-800">
+          <div className="flex items-center space-x-2 mb-4">
+            <Calendar className="w-5 h-5 text-purple-400" />
+            <h3 className="font-semibold text-white">Recent Games</h3>
+          </div>
+
+          <div className="space-y-2">
+            {recentGames.slice(0, 3).map((game) => (
+              <div
+                key={game.id}
+                className="flex items-center justify-between p-2 bg-slate-800/50 rounded"
+              >
+                <div className="flex items-center space-x-2">
+                  <span className="text-white font-mono text-sm">{game.asset_symbol}</span>
+                  <Badge
+                    variant="outline"
+                    className={`
+                      text-xs ${game.direction === 'up'
+                        ? 'text-green-400 border-green-400'
+                        : 'text-red-400 border-red-400'
+                      }
+                    `}
+                  >
+                    {game.direction.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {game.real_pnl_dollar && (
+                    <span className={`text-xs font-mono ${game.real_pnl_dollar >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                      ${game.real_pnl_dollar.toFixed(3)}
+                    </span>
+                  )}
+                  <Badge
+                    variant={game.result === 'win' ? 'default' : 'secondary'}
+                    className={`text-xs ${game.result === 'win' ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                  >
+                    {game.result?.toUpperCase()}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Performance Indicators */}
       {gameStats.totalGames > 0 && (
@@ -166,6 +370,51 @@ export function StatsPanel({ gameStats, currentPrediction }: StatsPanelProps) {
           </div>
         </Card>
       )}
+
+      {/* Leaderboard Toggle */}
+      <Card className="p-4 bg-slate-900/50 border-slate-800">
+        <Button
+          onClick={() => {
+            setShowLeaderboard(!showLeaderboard)
+            if (!showLeaderboard && leaderboard.length === 0) {
+              loadExtras()
+            }
+          }}
+          variant="outline"
+          className="w-full"
+          disabled={isLoadingExtras}
+        >
+          <Users className="w-4 h-4 mr-2" />
+          {showLeaderboard ? 'Hide' : 'Show'} Leaderboard
+          {isLoadingExtras && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+        </Button>
+
+        {showLeaderboard && leaderboard.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <h4 className="text-white font-semibold text-sm">Top Players</h4>
+            {leaderboard.slice(0, 5).map((player, index) => (
+              <div
+                key={player.user_address}
+                className={`flex items-center justify-between p-2 rounded ${player.user_address === userAddress
+                  ? 'bg-blue-500/20 border border-blue-500/50'
+                  : 'bg-slate-800/50'
+                  }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400 text-sm">#{index + 1}</span>
+                  <span className="text-white text-sm font-mono">
+                    {player.user_address.slice(0, 6)}...{player.user_address.slice(-4)}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-green-400 text-sm">{player.win_rate.toFixed(1)}%</span>
+                  <span className="text-slate-400 text-xs">({player.total_games})</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   )
 }

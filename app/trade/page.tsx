@@ -1,7 +1,8 @@
-// app/trade/page.tsx (create this new file)
+// app/trade/page.tsx - Updated for Supabase integration
 'use client'
 
 import { useState } from 'react'
+import { useAccount } from 'wagmi' // Add this import for wallet connection
 import { GameInterface } from '@/components/GameInterface'
 import { StatsPanel } from '@/components/StatsPanel'
 import { Header } from '@/components/GameHeader'
@@ -10,30 +11,14 @@ import { Prediction } from '@/lib/types'
 
 export type GameState = 'idle' | 'countdown' | 'active' | 'result'
 
-export type GameStats = {
-    totalGames: number
-    wins: number
-    losses: number
-    currentStreak: number
-    bestStreak: number
-    winRate: number
-    totalPnL: number
-}
-
 export default function TradePage() {
     const [gameState, setGameState] = useState<GameState>('idle')
     const [currentPrediction, setCurrentPrediction] = useState<Prediction | null>(null)
-    const [gameStats, setGameStats] = useState<GameStats>({
-        totalGames: 0,
-        wins: 0,
-        losses: 0,
-        currentStreak: 0,
-        bestStreak: 0,
-        winRate: 0,
-        totalPnL: 0
-    })
-
     const [soundEnabled, setSoundEnabled] = useState(true)
+
+    // Get wallet connection info
+    const { address } = useAccount()
+
 
     // Determine if there's an active position
     const hasActivePosition = currentPrediction !== null && (gameState === 'active' || gameState === 'countdown')
@@ -62,7 +47,6 @@ export default function TradePage() {
             currentPnL={currentPnL}
         >
             <Header
-                gameStats={gameStats}
                 soundEnabled={soundEnabled}
                 setSoundEnabled={setSoundEnabled}
             />
@@ -76,17 +60,18 @@ export default function TradePage() {
                             setGameState={setGameState}
                             currentPrediction={currentPrediction}
                             setCurrentPrediction={setCurrentPrediction}
-                            gameStats={gameStats}
-                            setGameStats={setGameStats}
                             soundEnabled={soundEnabled}
+                        // ❌ REMOVED: gameStats and setGameStats props
+                        // The GameInterface now handles its own database operations
                         />
                     </div>
 
                     {/* Stats Panel */}
                     <div className="xl:col-span-1">
                         <StatsPanel
-                            gameStats={gameStats}
                             currentPrediction={currentPrediction}
+                            userAddress={address} // ✅ CHANGED: Pass wallet address instead of gameStats
+                        // ❌ REMOVED: gameStats prop
                         />
                     </div>
                 </div>

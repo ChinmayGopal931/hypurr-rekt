@@ -1,4 +1,4 @@
-// GameTimer.tsx - Handle position closing when timer expires
+// GameTimer.tsx - Fixed to use consistent P&L logic with completion modal
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Progress } from './ui/progress'
@@ -11,13 +11,19 @@ import type { RealTimePnLData } from '@/service/hyperliquidOrders'
 import { useAccount } from 'wagmi'
 import { Prediction } from '@/lib/types'
 
+// ✅ UPDATED: Add real trade data to props
 interface GameTimerProps {
   initialTime: number
-  onComplete: (realExitPrice?: number, realPnL?: number) => void  // ✅ Enhanced callback
+  onComplete: (realExitPrice?: number) => void
   type: 'countdown' | 'game'
   prediction?: Prediction
   currentPrice?: number
   existingPositionCloid?: string | null
+  // ✅ NEW: Real trade data for consistent P&L calculation
+  actualEntryPrice?: number
+  positionSize?: string
+  leverage?: number
+  positionValue?: number
 }
 
 interface RealTimePnLState {
@@ -38,19 +44,18 @@ interface PnLDisplayData {
   isLoading: boolean
 }
 
-interface FallbackPnLData {
-  value: number
-  isWinning: boolean
-  isLosing: boolean
-}
-
 export function GameTimer({
   initialTime,
   onComplete,
   type,
   prediction,
   currentPrice,
-  existingPositionCloid = null
+  existingPositionCloid = null,
+  // ✅ NEW: Receive real trade data
+  actualEntryPrice,
+  positionSize,
+  leverage,
+  positionValue = 400
 }: GameTimerProps) {
   const [timeLeft, setTimeLeft] = useState(initialTime)
   const [isActive, setIsActive] = useState(true)
@@ -69,12 +74,9 @@ export function GameTimer({
 
   const { address, isConnected: isWalletConnected, chain } = useAccount()
   const { startPnLPolling } = useHyperliquid(address)
-
-  // ADD: Import the position closing hook
   const { explicitClosePosition } = useHyperliquidOrders(address, isWalletConnected, chain)
 
   const activePositionCloid = existingPositionCloid
-
   const assetPnLQuery = useAssetPnL(address, prediction?.asset.id)
 
   const handlePnLError = useCallback((error: unknown): string => {
@@ -83,13 +85,90 @@ export function GameTimer({
     return 'Unknown P&L error occurred'
   }, [])
 
+  // ✅ NEW: Calculate P&L using the same logic as completion modal
+  const calculateRealTimePnL = useCallback((): {
+    dollarPnL: number;
+    percentagePnL: number;
+    isRealData: boolean;
+    actualResult: 'win' | 'loss' | 'neutral';
+  } => {
+    if (!prediction || typeof currentPrice === 'undefined') {
+      return { dollarPnL: 0, percentagePnL: 0, isRealData: false, actualResult: 'neutral' };
+    }
+
+    // First priority: Use real-time P&L from API if available
+    if (realTimePnL.lastUpdate && !realTimePnL.error && realTimePnL.unrealizedPnl !== 0) {
+      const realPercentage = positionValue > 0 ? (Math.abs(realTimePnL.unrealizedPnl) / positionValue) * 100 : 0;
+      return {
+        dollarPnL: realTimePnL.unrealizedPnl,
+        percentagePnL: realPercentage,
+        isRealData: true,
+        actualResult: realTimePnL.unrealizedPnl > 0 ? 'win' : realTimePnL.unrealizedPnl < 0 ? 'loss' : 'neutral'
+      };
+    }
+
+    // Second priority: Calculate from actual prices and position size (same logic as completion modal)
+    if (actualEntryPrice && positionSize) {
+      const sizeNumber = parseFloat(positionSize);
+      // ✅ FIXED: Account for trade direction in P&L calculation
+      const dollarPnL = prediction.direction === 'up'
+        ? (currentPrice - actualEntryPrice) * sizeNumber  // LONG position
+        : (actualEntryPrice - currentPrice) * sizeNumber; // SHORT position
+      const percentagePnL = positionValue > 0 ? (Math.abs(dollarPnL) / positionValue) * 100 : 0;
+
+      return {
+        dollarPnL,
+        percentagePnL,
+        isRealData: true,
+        actualResult: dollarPnL > 0 ? 'win' : dollarPnL < 0 ? 'loss' : 'neutral'
+      };
+    }
+
+    // Fallback: Use percentage estimation based on direction prediction (same as completion modal)
+    const entryPrice = actualEntryPrice || prediction.entryPrice;
+    const priceDiff = currentPrice - entryPrice;
+    const percentageMove = entryPrice !== 0 ? Math.abs(priceDiff / entryPrice) * 100 : 0;
+
+    const didPriceGoUp = priceDiff > 0;
+    const predictedUp = prediction.direction === 'up';
+    const isCorrectPrediction = didPriceGoUp === predictedUp;
+
+    // ✅ FIXED: Apply leverage to the fallback calculation
+    const usedLeverage = leverage || 1;
+    const estimatedPnL = (positionValue * percentageMove * usedLeverage) / 100;
+    const leveragedPnL = estimatedPnL * (isCorrectPrediction ? 1 : -1);
+
+    return {
+      dollarPnL: leveragedPnL,
+      percentagePnL: percentageMove * usedLeverage, // ✅ FIXED: Apply leverage to percentage display
+      isRealData: false,
+      actualResult: isCorrectPrediction ? 'win' : 'loss'
+    };
+  }, [prediction, currentPrice, realTimePnL, actualEntryPrice, positionSize, positionValue]);
+
+  // ✅ UPDATED: Get P&L display using consistent logic
+  const getPnLDisplay = useCallback((): PnLDisplayData | null => {
+    if (!activePositionCloid || !prediction) return null;
+
+    const pnlCalc = calculateRealTimePnL();
+
+    return {
+      value: pnlCalc.percentagePnL,
+      dollarValue: pnlCalc.isRealData ? pnlCalc.dollarPnL : null,
+      isWinning: pnlCalc.actualResult === 'win',
+      isLosing: pnlCalc.actualResult === 'loss',
+      isReal: pnlCalc.isRealData,
+      isLoading: realTimePnL.isLoading || assetPnLQuery.isLoading
+    };
+  }, [activePositionCloid, prediction, calculateRealTimePnL, realTimePnL.isLoading, assetPnLQuery.isLoading]);
+
+  // Update winning state based on consistent P&L calculation
   useEffect(() => {
     if (type === 'game' && prediction && currentPrice) {
-      const priceDiff = currentPrice - prediction.entryPrice
-      const newIsWinning = prediction.direction === 'up' ? priceDiff > 0 : priceDiff < 0
-      setIsWinning(newIsWinning)
+      const pnlCalc = calculateRealTimePnL();
+      setIsWinning(pnlCalc.actualResult === 'win');
     }
-  }, [type, prediction, currentPrice])
+  }, [type, prediction, currentPrice, calculateRealTimePnL]);
 
   const handleClosePosition = useCallback(async (cloidToClose: string): Promise<void> => {
     if (!cloidToClose || isClosingPosition) return
@@ -102,21 +181,9 @@ export function GameTimer({
 
       if (closeResult.success && closeResult.exitPrice) {
         console.log(`✅ GameTimer: Position ${cloidToClose} closed successfully at REAL PRICE ${closeResult.exitPrice}`)
-
-        // ✅ Calculate REAL P&L using actual trade data  
-        let realPnLDollar: number | undefined
-        if (prediction && closeResult.exitPrice) {
-          // Get position size from prediction or estimate
-          const positionSizeStr = '0.0037' // You might want to pass this as a prop
-          const positionSize = parseFloat(positionSizeStr)
-          const priceDiff = closeResult.exitPrice - prediction.entryPrice
-          realPnLDollar = priceDiff * positionSize
-
-        }
-
-
-        onComplete(closeResult.exitPrice, realPnLDollar)
-        return // ✅ Early return to avoid any fallback calls
+        setIsClosingPosition(false)
+        onComplete(closeResult.exitPrice)
+        return
       } else {
         console.error(`❌ GameTimer: Failed to close position ${cloidToClose}:`, closeResult.error)
       }
@@ -124,13 +191,12 @@ export function GameTimer({
       console.error(`❌ GameTimer: Error closing position ${cloidToClose}:`, error)
     }
 
-    // ✅ Only call fallback if the real close failed
     console.log(`⚠️ GameTimer: Using fallback price ${currentPrice} due to close failure`)
     setIsClosingPosition(false)
     onComplete(currentPrice)
-  }, [explicitClosePosition, isClosingPosition, onComplete, currentPrice, prediction])
+  }, [explicitClosePosition, isClosingPosition, onComplete, currentPrice]);
 
-  // ✅ UPDATED: Timer countdown logic to pass real close data
+  // Timer countdown logic
   useEffect(() => {
     if (!isActive || timeLeft <= 0) return
 
@@ -142,10 +208,8 @@ export function GameTimer({
 
           if (type === 'game' && activePositionCloid) {
             console.log(`⏰ GameTimer: Timer expired, initiating position close for ${activePositionCloid}`)
-            // ✅ handleClosePosition now calls onComplete with real data
             handleClosePosition(activePositionCloid)
           } else {
-            // ✅ No position to close, just complete
             onComplete()
           }
 
@@ -235,49 +299,6 @@ export function GameTimer({
   const isLastSeconds = timeLeft <= 3 && timeLeft > 0
   const isLastSecond = timeLeft <= 1 && timeLeft > 0
 
-  const getFallbackPnL = useCallback((): FallbackPnLData | null => {
-    if (!prediction || typeof currentPrice === 'undefined' || !activePositionCloid) return null
-    const priceDiff = currentPrice - prediction.entryPrice
-    const percentage = prediction.entryPrice !== 0 ? (priceDiff / prediction.entryPrice) * 100 : 0
-    const isWinningOutcome =
-      (prediction.direction === 'up' && priceDiff > 0) ||
-      (prediction.direction === 'down' && priceDiff < 0)
-    return {
-      value: Math.abs(percentage),
-      isWinning: isWinningOutcome,
-      isLosing: !isWinningOutcome && priceDiff !== 0
-    }
-  }, [prediction, currentPrice, activePositionCloid])
-
-  const getPnLDisplay = useCallback((): PnLDisplayData | null => {
-    if (!activePositionCloid) return null
-
-    if (realTimePnL.lastUpdate && !realTimePnL.error && assetPnLQuery.isSuccess && activePositionCloid) {
-      const isWinningOutcome = realTimePnL.unrealizedPnl > 0
-      const isLosingOutcome = realTimePnL.unrealizedPnl < 0
-      return {
-        value: Math.abs(realTimePnL.returnOnEquity),
-        dollarValue: Math.abs(realTimePnL.unrealizedPnl),
-        isWinning: isWinningOutcome,
-        isLosing: isLosingOutcome,
-        isReal: true,
-        isLoading: realTimePnL.isLoading || assetPnLQuery.isLoading
-      }
-    } else {
-      const fallback = getFallbackPnL()
-      if (!fallback) return null
-
-      return {
-        value: fallback.value,
-        dollarValue: null,
-        isWinning: fallback.isWinning,
-        isLosing: fallback.isLosing,
-        isReal: false,
-        isLoading: realTimePnL.isLoading || assetPnLQuery.isLoading
-      }
-    }
-  }, [realTimePnL, getFallbackPnL, assetPnLQuery.isSuccess, assetPnLQuery.isLoading, activePositionCloid])
-
   const pnlDisplay = getPnLDisplay()
 
   if (type === 'countdown') {
@@ -321,6 +342,7 @@ export function GameTimer({
             </div>
           </div>
         )}
+
       </div>
 
       {prediction && activePositionCloid && (
@@ -361,7 +383,6 @@ export function GameTimer({
         />
       </div>
 
-      {/* ADD: Show closing status */}
       {isClosingPosition && (
         <div className="text-center text-yellow-400">
           <Loader2 className="w-6 h-6 animate-spin inline-block mr-2" />
@@ -369,6 +390,7 @@ export function GameTimer({
         </div>
       )}
 
+      {/* ✅ UPDATED: P&L display now uses consistent calculation */}
       {pnlDisplay && activePositionCloid && (
         <motion.div
           key={`${pnlDisplay.isWinning}-${pnlDisplay.value.toFixed(2)}-${pnlDisplay.isReal}-${activePositionCloid}`}
@@ -405,7 +427,7 @@ export function GameTimer({
               pnlDisplay.isLosing ? 'text-red-400' :
                 'text-white'
               }`}>
-              {pnlDisplay.isWinning ? '+' : pnlDisplay.isLosing ? '-' : ''}${pnlDisplay.dollarValue.toFixed(2)}
+              {pnlDisplay.isWinning ? '+' : pnlDisplay.isLosing ? '-' : ''}${Math.abs(pnlDisplay.dollarValue).toFixed(2)}
             </div>
           )}
           <motion.div
@@ -417,15 +439,15 @@ export function GameTimer({
               }`}
           >
             {pnlDisplay.isWinning ?
-              <><Trophy className="w-5 h-5" /><span>🚀 WINNING!</span></> :
+              <><Trophy className="w-5 h-5" /><span> WINNING!</span></> :
               pnlDisplay.isLosing ?
-                <><Zap className="w-5 h-5" /><span>💔 LOSING</span></> :
+                <><Zap className="w-5 h-5" /><span> LOSING</span></> :
                 <span>NEUTRAL</span>
             }
           </motion.div>
           <div className="mt-2 space-y-1 text-xs">
             {!pnlDisplay.isReal && !realTimePnL.isLoading && !realTimePnL.error &&
-              <div className="text-slate-500">Based on current price vs entry</div>
+              <div className="text-slate-500">Based on {actualEntryPrice ? 'real trade data' : 'current price vs entry'}</div>
             }
             {realTimePnL.error &&
               <div className="text-red-400 flex items-center justify-center space-x-1">
