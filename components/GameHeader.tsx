@@ -1,6 +1,6 @@
 // src/components/Header.tsx
 import { Button } from './ui/button'
-import { Volume2, VolumeX, TrendingUp } from 'lucide-react'
+import { Volume2, VolumeX } from 'lucide-react'
 
 interface HeaderProps {
   soundEnabled: boolean
@@ -14,9 +14,8 @@ export function Header({ soundEnabled, setSoundEnabled }: HeaderProps) {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-emerald-500 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-white" />
-            </div>
+            <img src="/logoWhite.svg" alt="Speed" className="w-28 h-20 object-contain" />
+
             <div>
               <h1 className="text-xl font-bold text-white">HYPURREKT</h1>
             </div>

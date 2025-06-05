@@ -102,11 +102,10 @@ export default function LandingPage() {
       <div className="relative z-10 min-h-screen">
         {/* Header */}
         <header className="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-md border-b border-emerald-500/20">
-          <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                <span className="text-emerald-400 font-bold text-lg">📈</span>
-              </div>
+          <div className="container mx-auto px-0 py-0 flex items-center justify-between">
+            <div className="flex items-center space-x-0">
+              <img src="/logoWhite.svg" alt="Speed" className="w-30 h-20" />
+
               <div className="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent font-bold text-xl">
                 HYPURREKT
               </div>
