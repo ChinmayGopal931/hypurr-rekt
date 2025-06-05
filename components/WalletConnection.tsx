@@ -268,7 +268,6 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
           <div className="text-xs text-slate-500 space-y-1">
             <div>• Arbitrum Sepolia testnet required</div>
             <div>• $10 prediction size per trade</div>
-            <div>• Real orders, testnet ETH only</div>
             <div>• Automatic position management</div>
           </div>
         </div>
@@ -314,12 +313,12 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
                 This app uses Hyperliquid testnet. You&apos;ll need to switch to Arbitrum Sepolia to sign transactions.
               </div>
               <a
-                href="https://faucet.arbitrum.io/"
+                href="https://app.hyperliquid-testnet.xyz/drip"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center text-sm text-white hover:text-blue-200 underline"
               >
-                Get Testnet ETH <ExternalLink className="w-3 h-3 ml-1" />
+                Get Testnet USDC <ExternalLink className="w-3 h-3 ml-1" />
               </a>
             </div>
           </AlertDescription>
