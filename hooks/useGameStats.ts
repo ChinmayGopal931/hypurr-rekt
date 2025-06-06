@@ -106,14 +106,9 @@ export function useGameStats(userAddress?: string) {
             setUserStats(null)
             return
         }
-
         setIsLoading(true)
         setError(null)
-
         try {
-            console.log('📊 Loading user stats from games data...')
-
-            // Get all completed games for this user
             const { data: games, error: gamesError } = await supabase
                 .from('games')
                 .select('*')
@@ -123,15 +118,27 @@ export function useGameStats(userAddress?: string) {
 
             if (gamesError) throw gamesError
 
-            // Calculate stats manually from actual game data
             const calculatedStats = await calculateStatsFromGames(games || [])
             setUserStats(calculatedStats)
 
-            console.log('✅ Stats loaded:', calculatedStats)
+            // ✅ BEST PLACE TO WRITE TO THE LEADERBOARD TABLE
+            // This runs after every calculation, ensuring the leaderboard is always in sync.
+            if (calculatedStats.total_games > 0) {
+                console.log('📝 Upserting stats to leaderboard table...');
+                const { error: upsertError } = await supabase
+                    .from('user_stats')
+                    .upsert(calculatedStats, { onConflict: 'user_address' });
+
+                if (upsertError) {
+                    console.error('❌ Failed to upsert user stats:', upsertError);
+                    throw upsertError; // Or handle it more gracefully
+                }
+                console.log('✅ Leaderboard stats successfully saved.');
+            }
 
         } catch (err) {
-            console.error('❌ Error loading stats:', err)
-            setError(err instanceof Error ? err.message : 'Failed to load stats')
+            console.error('❌ Error loading/saving stats:', err)
+            setError(err instanceof Error ? err.message : 'Failed to load or save stats')
         } finally {
             setIsLoading(false)
         }
