@@ -84,7 +84,6 @@ export class HyperliquidOrderService {
   public static readonly MAINNET_API = 'https://api.hyperliquid.xyz'
   public static readonly MARGIN_AMOUNT = 10
 
-
   private useTestnet: boolean = true
   private activePositions: Map<string, PositionInfo> = new Map()
   private positionCallbacks: Map<string, (result: 'win' | 'loss', exitPrice: number) => void> = new Map()
@@ -98,6 +97,22 @@ export class HyperliquidOrderService {
     return this.useTestnet ? HyperliquidOrderService.TESTNET_API : HyperliquidOrderService.MAINNET_API
   }
 
+  // Development mode aggressive pricing helper
+  private applyDevModeAgressivePricing(price: number, isOpening: boolean): number {
+    const isDevMode = process.env.NODE_ENV === 'development' || process.env.HYPERLIQUID_DEV_MODE === 'true'
+
+    if (!isDevMode) {
+      return price
+    }
+
+    // For opening positions: slightly higher price (1.01x) to ensure fills
+    // For closing positions: slightly lower price (0.99x) to ensure fills
+    const multiplier = isOpening ? 1.01 : 0.99
+    const adjustedPrice = price * multiplier
+
+    console.log(`🔧 DEV MODE: Adjusted price from ${price} to ${adjustedPrice} (${isOpening ? 'opening' : 'closing'})`)
+    return adjustedPrice
+  }
 
   private scheduleAutoClose(cloid: string, timeWindowMs: number): void {
     console.log(`⏰ Scheduling auto-close for position ${cloid} in ${timeWindowMs}ms`)
@@ -284,7 +299,9 @@ export class HyperliquidOrderService {
       }
 
       const isClosingLong = position.direction === 'up'
-      const aggressivePrice = formatPrice(currentPrice, assetConfig.szDecimals)
+      // Apply dev mode aggressive pricing for closing positions
+      const adjustedPrice = this.applyDevModeAgressivePricing(currentPrice, false)
+      const aggressivePrice = formatPrice(adjustedPrice, assetConfig.szDecimals)
 
       if (!aggressivePrice || !positionSize) {
         console.warn(`⚠️ Missing required values, using market price: aggressivePrice=${aggressivePrice}, size=${positionSize}`)
@@ -654,8 +671,9 @@ export class HyperliquidOrderService {
       console.log(`✅ STEP 1 COMPLETE: ${request.asset} leverage set to ${targetLeverage}x`)
 
       const expectedPositionValue = 10 * targetLeverage
-      // FIXED: Use market price for fair execution instead of aggressive pricing
-      const orderPrice = formatPrice(request.price, assetConfig.szDecimals);
+      // Apply dev mode aggressive pricing for opening positions
+      const adjustedPrice = this.applyDevModeAgressivePricing(request.price, true)
+      const orderPrice = formatPrice(adjustedPrice, assetConfig.szDecimals);
       const orderSize = calculateOrderSizeWithTrueLeverage(
         request.price, // Use original market price for size calculation
         assetConfig.szDecimals,
@@ -691,7 +709,7 @@ export class HyperliquidOrderService {
         direction: request.direction,
         marketPrice: marketPrice,
         orderPrice: orderPrice,
-        priceAdjustment: 'None (using market price)',
+        priceAdjustment: process.env.NODE_ENV === 'development' || process.env.HYPERLIQUID_DEV_MODE === 'true' ? 'Dev mode: +1%' : 'None (using market price)',
         finalOrderSize: orderSize,
         actualOrderValue: actualOrderValue,
         timeWindow: request.timeWindow,
@@ -702,7 +720,7 @@ export class HyperliquidOrderService {
         const order = {
           a: assetConfig.assetId,
           b: request.direction === 'up',
-          p: orderPrice, // Use market price instead of aggressive price
+          p: orderPrice, // Use dev-adjusted price
           s: orderSize,
           r: false,
           t: { limit: { tif: 'Ioc' } },
