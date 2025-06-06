@@ -30,6 +30,12 @@ interface GameInterfaceProps {
   currentPrediction: Prediction | null
   setCurrentPrediction: (prediction: Prediction | null) => void
   soundEnabled: boolean
+  audioFunctions?: {
+    playMeow: () => void,
+    playBeggingMeow?: () => void,
+    playWinSound?: () => void,
+    playLossSound?: () => void
+  }
 }
 
 interface CompletionData {
@@ -61,6 +67,8 @@ export function GameInterface({
   setGameState,
   currentPrediction,
   setCurrentPrediction,
+  soundEnabled,
+  audioFunctions
 }: GameInterfaceProps) {
   // Local state with proper typing
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
@@ -194,6 +202,17 @@ export function GameInterface({
       exitPrice
     }
 
+    // Play the appropriate sound based on the game result
+    if (soundEnabled && audioFunctions) {
+      if (result === 'win' && audioFunctions.playWinSound) {
+        audioFunctions.playWinSound();
+        console.log('🐱 Playing win sound for successful trade');
+      } else if (result === 'loss' && audioFunctions.playLossSound) {
+        audioFunctions.playLossSound();
+        console.log('🐱 Playing loss sound for unsuccessful trade');
+      }
+    }
+
     setCurrentPrediction(updatedPrediction)
     setActivePositionCloid(null)
 
@@ -229,6 +248,11 @@ export function GameInterface({
 
   const handlePrediction = useCallback(async (direction: 'up' | 'down'): Promise<void> => {
     if (!selectedAsset || !canPlaceOrder) return
+
+    // Play meow sound when position is opened (if sound is enabled)
+    if (soundEnabled && audioFunctions?.playMeow) {
+      audioFunctions.playMeow();
+    }
 
     try {
       setIsPlacingOrder(true)
@@ -555,6 +579,29 @@ export function GameInterface({
       {/* Wallet Connection */}
       <WalletConnection onWalletReady={() => setWalletReady(true)} />
 
+      {/* Margin Requirement Alert */}
+      {isWalletConnected && (
+        <Alert className="border-orange-500/50 bg-orange-500/10">
+          <DollarSign className="h-4 w-4 text-orange-400" />
+          <AlertDescription className="text-orange-400">
+            <div className="font-semibold mb-1">Margin Requirement</div>
+            <div className="text-sm space-y-1">
+              <div>Each trade requires $10 USDC margin in your Hyperliquid account</div>
+              <div className="flex items-center space-x-4">
+                <span>40x leverage = $400 position</span>
+                <span>•</span>
+                <span>Max BTC leverage: 40x</span>
+                <span>•</span>
+                <span>Max ETH leverage: 25x</span>
+              </div>
+              <div className="text-xs text-orange-300 mt-2">
+                Make sure you have at least $10+ USDC in your Hyperliquid account before trading
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Agent Status */}
       {address && (
         <AgentStatus userAddress={address} isConnected={isWalletConnected} />
@@ -735,29 +782,6 @@ export function GameInterface({
             />
           )}
         </Card>
-      )}
-
-      {/* Margin Requirement Alert */}
-      {isWalletConnected && (
-        <Alert className="border-orange-500/50 bg-orange-500/10">
-          <DollarSign className="h-4 w-4 text-orange-400" />
-          <AlertDescription className="text-orange-400">
-            <div className="font-semibold mb-1">Margin Requirement</div>
-            <div className="text-sm space-y-1">
-              <div>Each trade requires $10 USDC margin in your Hyperliquid account</div>
-              <div className="flex items-center space-x-4">
-                <span>40x leverage = $400 position</span>
-                <span>•</span>
-                <span>Max BTC leverage: 40x</span>
-                <span>•</span>
-                <span>Max ETH leverage: 25x</span>
-              </div>
-              <div className="text-xs text-orange-300 mt-2">
-                Make sure you have at least $10+ USDC in your Hyperliquid account before trading
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
       )}
 
       {/* Attribution */}

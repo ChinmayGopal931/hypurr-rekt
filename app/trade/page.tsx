@@ -8,6 +8,7 @@ import { StatsPanel } from '@/components/StatsPanel'
 import { Header } from '@/components/GameHeader'
 import { DynamicBackground } from '@/components/Background'
 import { Prediction } from '@/lib/types'
+import { useAudio } from '@/hooks/useAudio'
 
 export type GameState = 'idle' | 'countdown' | 'active' | 'result'
 
@@ -18,6 +19,7 @@ export default function TradePage() {
 
     // Get wallet connection info
     const { address } = useAccount()
+    const audioFunctions = useAudio(soundEnabled)
 
 
     // Determine if there's an active position
@@ -61,6 +63,7 @@ export default function TradePage() {
                             currentPrediction={currentPrediction}
                             setCurrentPrediction={setCurrentPrediction}
                             soundEnabled={soundEnabled}
+                            audioFunctions={audioFunctions}
                         // ❌ REMOVED: gameStats and setGameStats props
                         // The GameInterface now handles its own database operations
                         />
