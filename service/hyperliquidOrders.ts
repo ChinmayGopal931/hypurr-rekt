@@ -80,8 +80,6 @@ export type SignTypedDataFunction = (args: {
 }) => Promise<string>
 
 export class HyperliquidOrderService {
-  public static readonly TESTNET_API = 'https://api.hyperliquid-testnet.xyz'
-  public static readonly MAINNET_API = 'https://api.hyperliquid.xyz'
   public static readonly MARGIN_AMOUNT = 10
 
   private useTestnet: boolean = true
@@ -94,7 +92,7 @@ export class HyperliquidOrderService {
   }
 
   public getApiUrl(): string {
-    return this.useTestnet ? HyperliquidOrderService.TESTNET_API : HyperliquidOrderService.MAINNET_API
+    return hyperliquid.getApiUrl()
   }
 
   // Development mode aggressive pricing helper

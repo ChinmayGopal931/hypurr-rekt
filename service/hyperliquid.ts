@@ -67,7 +67,7 @@ export class HyperliquidService {
     this.useTestnet = useTestnet
   }
 
-  private getApiUrl(): string {
+  public getApiUrl(): string {
     return this.useTestnet ? HyperliquidService.TESTNET_API : HyperliquidService.MAINNET_API
   }
 
