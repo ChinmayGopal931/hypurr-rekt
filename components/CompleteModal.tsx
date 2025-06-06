@@ -162,7 +162,6 @@ export function GameCompletionModal({
     };
 
     try {
-      console.log("Requesting trade image with REAL data params:", params);
       const imageBlob = await render(params);
       if (imageBlob) {
         setShareableImageUrl(URL.createObjectURL(imageBlob));
@@ -197,14 +196,14 @@ export function GameCompletionModal({
     <AnimatePresence>
       {isOpen && (
         <Dialog open={isOpen} onOpenChange={onClose}>
-          <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700 overflow-hidden">
-            <DialogTitle className="text-slate-200">Game Completed</DialogTitle>
+          <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] bg-slate-900 border-slate-700 overflow-hidden flex flex-col">
+            <DialogTitle className="text-slate-200 flex-shrink-0">Game Completed</DialogTitle>
             <motion.div
               variants={modalVariants}
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="space-y-6"
+              className="space-y-4 sm:space-y-6 pb-4"
             >
               {/* Header with result - now based on actual P&L */}
               <motion.div
@@ -319,8 +318,8 @@ export function GameCompletionModal({
                       exit={{ opacity: 0, height: 0 }}
                       className="space-y-3 overflow-hidden"
                     >
-                      <Card className="p-4 bg-slate-800/30 border-slate-700">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                      <Card className="p-3 sm:p-4 bg-slate-800/30 border-slate-700">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                           <div className="space-y-2">
                             <div className="flex justify-between">
                               <span className="text-slate-400">Asset:</span>
@@ -417,7 +416,7 @@ export function GameCompletionModal({
 
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
-                    <div className="text-2xl font-bold text-white">
+                    <div className="text-xl sm:text-2xl font-bold text-white">
                       {gameStats.totalGames}
                     </div>
                     <div className="text-slate-400 text-xs">Total Games</div>
@@ -454,11 +453,11 @@ export function GameCompletionModal({
               {/* Action Buttons */}
               <motion.div
                 variants={childVariants}
-                className="flex space-x-3 pt-2"
+                className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-2"
               >
                 <Button
                   onClick={onPlayAgain}
-                  className={`flex-1 ${isWin
+                  className={`w-full ${isWin
                     ? 'bg-green-600 hover:bg-green-700'
                     : 'bg-blue-600 hover:bg-blue-700'
                     } text-white`}
@@ -470,7 +469,7 @@ export function GameCompletionModal({
                 <Button
                   variant="outline"
                   onClick={onClose}
-                  className="flex-1 text-slate-300 border-slate-600 hover:bg-slate-700/50"
+                  className="w-full text-slate-300 border-slate-600 hover:bg-slate-700/50"
                 >
                   View Dashboard
                 </Button>
@@ -478,7 +477,8 @@ export function GameCompletionModal({
             </motion.div>
           </DialogContent>
         </Dialog>
-      )}
-    </AnimatePresence>
+      )
+      }
+    </AnimatePresence >
   );
 }
