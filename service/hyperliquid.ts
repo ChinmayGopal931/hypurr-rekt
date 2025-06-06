@@ -42,7 +42,7 @@ export class HyperliquidService {
   private static readonly MAINNET_WS = 'wss://api.hyperliquid.xyz/ws'
   private static readonly TESTNET_WS = 'wss://api.hyperliquid-testnet.xyz/ws'
 
-  private useTestnet: boolean
+  public useTestnet: boolean
   private ws: WebSocket | null = null
   private connectionState: 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' = 'DISCONNECTED';
   private connectionPromise: Promise<void> | null = null; // To chain connection attempts

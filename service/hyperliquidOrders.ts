@@ -99,7 +99,7 @@ export class HyperliquidOrderService {
 
   // Development mode aggressive pricing helper
   private applyDevModeAgressivePricing(price: number, isOpening: boolean): number {
-    const isDevMode = process.env.NODE_ENV === 'development' || process.env.HYPERLIQUID_DEV_MODE === 'true'
+    const isDevMode = hyperliquid.useTestnet
 
     if (!isDevMode) {
       return price
