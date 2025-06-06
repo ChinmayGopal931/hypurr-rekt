@@ -191,294 +191,294 @@ export function GameCompletionModal({
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.3 } }
   };
-
   return (
     <AnimatePresence>
       {isOpen && (
         <Dialog open={isOpen} onOpenChange={onClose}>
           <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] bg-slate-900 border-slate-700 overflow-hidden flex flex-col">
             <DialogTitle className="text-slate-200 flex-shrink-0">Game Completed</DialogTitle>
-            <motion.div
-              variants={modalVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="space-y-4 sm:space-y-6 pb-4"
-            >
-              {/* Header with result - now based on actual P&L */}
+            <div className="overflow-y-auto flex-1 px-1">
               <motion.div
-                variants={childVariants}
-                className="text-center space-y-4"
+                variants={modalVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="space-y-4 sm:space-y-6 pb-4"
               >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1, rotate: 360 }}
-                  transition={{ delay: 0.2, duration: 0.5 }}
-                  className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center ${isWin
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-red-500/20 text-red-400'
-                    }`}
-                >
-                  <img
-                    src={isWin ? '/assets/images/hypurr/throne.png' : '/assets/images/hypurr/cry.png'}
-                    alt={isWin ? "Happy cat" : "Sad cat"}
-                    className="w-22 h-22 object-contain"
-                  />
-                </motion.div>
-
-                <motion.div variants={childVariants}>
-                  <div className="flex items-center justify-center gap-3 mb-2">
-                    <div className={`text-4xl font-bold ${isWin ? 'text-green-400' : 'text-red-400'}`}>
-                      {isWin ? 'YOU WON!' : 'YOU LOST'}
-                    </div>
-                  </div>
-                  <div className="text-slate-400">
-                    Game completed after {prediction.timeWindow} seconds
-                  </div>
-                  {/* ✅ Add indicator for real vs estimated data */}
-                  <div className="text-xs text-slate-500 mt-1">
-                    {isRealData ? '📊 Real trade data' : '📈 Estimated based on price movement'}
-                  </div>
-                </motion.div>
-
+                {/* Header with result - now based on actual P&L */}
                 <motion.div
                   variants={childVariants}
-                  className="bg-slate-800/50 rounded-lg p-4"
+                  className="text-center space-y-3 sm:space-y-4"
                 >
-                  <div className="flex items-center justify-center space-x-4 mb-3">
-                    <div className="text-center">
-                      <div className="text-slate-400 text-sm">Entry</div>
-                      <div className="text-white font-mono text-lg">
-                        ${entryPrice.toLocaleString()}
-                      </div>
-                    </div>
-
-                    <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-                      {prediction.direction === 'up' ? (
-                        <TrendingUp className="w-6 h-6" />
-                      ) : (
-                        <TrendingDown className="w-6 h-6" />
-                      )}
-                      <Zap className="w-4 h-4" />
-                    </div>
-
-                    <div className="text-center">
-                      <div className="text-slate-400 text-sm">Exit</div>
-                      <div className="text-white font-mono text-lg">
-                        ${actualExitPrice.toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-center">
-                    <div className={`text-2xl font-bold font-mono ${priceDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {priceDiff >= 0 ? '+' : ''}${priceDiff.toFixed(2)}
-                    </div>
-                    <div className={`text-sm ${priceDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {percentageMove.toFixed(3)}% move
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* ✅ Real P&L Display - now determines the win/loss correctly */}
-                <motion.div
-                  variants={childVariants}
-                  className={`bg-slate-800/30 rounded-lg p-4 border ${isWin ? 'border-green-500/30' : 'border-red-500/30'}`}
-                >
-                  <div className="text-center">
-                    <div className="text-slate-400 text-sm mb-2">
-                      {isRealData ? 'Actual P&L' : 'Estimated P&L'}
-                    </div>
-                    <div className={`text-3xl font-bold font-mono ${dollarPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {dollarPnL >= 0 ? '+' : ''}${dollarPnL.toFixed(2)}
-                    </div>
-                    <div className={`text-lg font-mono ${dollarPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {dollarPnL >= 0 ? '+' : ''}{percentagePnL.toFixed(2)}%
-                    </div>
-                  </div>
-                </motion.div>
-              </motion.div>
-
-              {/* Trade Details Toggle */}
-              <motion.div variants={childVariants}>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowDetails(!showDetails)}
-                  className="w-full mb-4 text-slate-300 border-slate-600 hover:bg-slate-700/50"
-                >
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  {showDetails ? 'Hide' : 'Show'} Trade Details
-                </Button>
-
-                <AnimatePresence>
-                  {showDetails && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="space-y-3 overflow-hidden"
-                    >
-                      <Card className="p-3 sm:p-4 bg-slate-800/30 border-slate-700">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Asset:</span>
-                              <span className="text-white">{prediction.asset.name}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Direction:</span>
-                              <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-                                {prediction.direction === 'up' ? (
-                                  <TrendingUp className="w-3 h-3" />
-                                ) : (
-                                  <TrendingDown className="w-3 h-3" />
-                                )}
-                                <span>{prediction.direction.toUpperCase()}</span>
-                              </div>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Leverage:</span>
-                              <span className="text-blue-400">{leverage}x</span>
-                            </div>
-                            {/* ✅ Show actual position size if available */}
-                            {positionSize && (
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Size:</span>
-                                <span className="text-white font-mono">{positionSize}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Position:</span>
-                              <span className="text-white">${positionValue.toFixed(0)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Duration:</span>
-                              <span className="text-white">{prediction.timeWindow}s</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Entry Price:</span>
-                              <span className="text-white font-mono">${entryPrice.toFixed(1)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Exit Price:</span>
-                              <span className="text-white font-mono">${actualExitPrice.toFixed(1)}</span>
-                            </div>
-                            {/* ✅ Show data source */}
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Data:</span>
-                              <span className={`text-xs ${isRealData ? 'text-green-400' : 'text-yellow-400'}`}>
-                                {isRealData ? 'API' : 'Estimated'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </Card>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-
-              {/* Shareable Image Section */}
-              <motion.div variants={childVariants}>
-                <Button
-                  onClick={handleGenerateImage}
-                  disabled={isGeneratingImage}
-                  className="w-full mb-3 bg-purple-600 hover:bg-purple-700 text-white"
-                >
-                  <ImageIcon className="w-4 h-4 mr-2" />
-                  {isGeneratingImage ? 'Generating Image...' : 'Create Shareable Image'}
-                </Button>
-                {generationError && (
-                  <p className="text-red-500 text-xs text-center mb-2 px-2">{generationError}</p>
-                )}
-                {shareableImageUrl && !generationError && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-2 mb-3"
-                  >
-                    <img src={shareableImageUrl} alt="Trade Summary" className="rounded-lg border border-slate-700 mx-auto" />
-                  </motion.div>
-                )}
-              </motion.div>
-
-              {/* Stats Update */}
-              <motion.div
-                variants={childVariants}
-                className="bg-slate-800/30 rounded-lg p-4"
-              >
-                <div className="text-center mb-3">
-                  <div className="text-slate-400 text-sm">Updated Stats</div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <div className="text-xl sm:text-2xl font-bold text-white">
-                      {gameStats.totalGames}
-                    </div>
-                    <div className="text-slate-400 text-xs">Total Games</div>
-                  </div>
-
-                  <div>
-                    <div className="text-2xl font-bold text-green-400">
-                      {gameStats.wins}
-                    </div>
-                    <div className="text-slate-400 text-xs">Wins</div>
-                  </div>
-
-                  <div>
-                    <div className="text-2xl font-bold text-blue-400">
-                      {gameStats.winRate.toFixed(1)}%
-                    </div>
-                    <div className="text-slate-400 text-xs">Win Rate</div>
-                  </div>
-                </div>
-
-                {gameStats.currentStreak > 0 && (
                   <motion.div
                     initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="mt-3 text-center"
+                    animate={{ scale: 1, rotate: 360 }}
+                    transition={{ delay: 0.2, duration: 0.5 }}
+                    className={`mx-auto w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center ${isWin
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-red-500/20 text-red-400'
+                      }`}
                   >
-                    <Badge variant="outline" className="text-yellow-400 border-yellow-400/50 bg-yellow-500/10">
-                      {gameStats.currentStreak} Win Streak!
-                    </Badge>
+                    <img
+                      src={isWin ? '/assets/images/hypurr/throne.png' : '/assets/images/hypurr/cry.png'}
+                      alt={isWin ? "Happy cat" : "Sad cat"}
+                      className="w-18 h-18 sm:w-22 sm:h-22 object-contain"
+                    />
                   </motion.div>
-                )}
-              </motion.div>
 
-              {/* Action Buttons */}
-              <motion.div
-                variants={childVariants}
-                className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-2"
-              >
-                <Button
-                  onClick={onPlayAgain}
-                  className={`w-full ${isWin
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                    } text-white`}
-                >
-                  <PlayCircle className="w-4 h-4 mr-2" />
-                  Play Again
-                </Button>
+                  <motion.div variants={childVariants}>
+                    <div className="flex items-center justify-center gap-3 mb-2">
+                      <div className={`text-2xl sm:text-4xl font-bold ${isWin ? 'text-green-400' : 'text-red-400'}`}>
+                        {isWin ? 'YOU WON!' : 'YOU LOST'}
+                      </div>
+                    </div>
+                    <div className="text-slate-400 text-sm sm:text-base">
+                      Game completed after {prediction.timeWindow} seconds
+                    </div>
+                    {/* ✅ Add indicator for real vs estimated data */}
+                    <div className="text-xs text-slate-500 mt-1">
+                      {isRealData ? '📊 Real trade data' : '📈 Estimated based on price movement'}
+                    </div>
+                  </motion.div>
 
-                <Button
-                  variant="outline"
-                  onClick={onClose}
-                  className="w-full text-slate-300 border-slate-600 hover:bg-slate-700/50"
+                  <motion.div
+                    variants={childVariants}
+                    className="bg-slate-800/50 rounded-lg p-3 sm:p-4"
+                  >
+                    <div className="flex items-center justify-center space-x-2 sm:space-x-4 mb-3">
+                      <div className="text-center">
+                        <div className="text-slate-400 text-xs sm:text-sm">Entry</div>
+                        <div className="text-white font-mono text-sm sm:text-lg">
+                          ${entryPrice.toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                        {prediction.direction === 'up' ? (
+                          <TrendingUp className="w-4 h-4 sm:w-6 sm:h-6" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6" />
+                        )}
+                        <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-slate-400 text-xs sm:text-sm">Exit</div>
+                        <div className="text-white font-mono text-sm sm:text-lg">
+                          ${actualExitPrice.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-center">
+                      <div className={`text-xl sm:text-2xl font-bold font-mono ${priceDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {priceDiff >= 0 ? '+' : ''}${priceDiff.toFixed(2)}
+                      </div>
+                      <div className={`text-xs sm:text-sm ${priceDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {percentageMove.toFixed(3)}% move
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* ✅ Real P&L Display - now determines the win/loss correctly */}
+                  <motion.div
+                    variants={childVariants}
+                    className={`bg-slate-800/30 rounded-lg p-3 sm:p-4 border ${isWin ? 'border-green-500/30' : 'border-red-500/30'}`}
+                  >
+                    <div className="text-center">
+                      <div className="text-slate-400 text-xs sm:text-sm mb-2">
+                        {isRealData ? 'Actual P&L' : 'Estimated P&L'}
+                      </div>
+                      <div className={`text-2xl sm:text-3xl font-bold font-mono ${dollarPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {dollarPnL >= 0 ? '+' : ''}${dollarPnL.toFixed(2)}
+                      </div>
+                      <div className={`text-base sm:text-lg font-mono ${dollarPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {dollarPnL >= 0 ? '+' : ''}{percentagePnL.toFixed(2)}%
+                      </div>
+                    </div>
+                  </motion.div>
+                </motion.div>
+
+                {/* Trade Details Toggle */}
+                <motion.div variants={childVariants}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDetails(!showDetails)}
+                    className="w-full mb-4 text-slate-300 border-slate-600 hover:bg-slate-700/50"
+                  >
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    {showDetails ? 'Hide' : 'Show'} Trade Details
+                  </Button>
+
+                  <AnimatePresence>
+                    {showDetails && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-3 overflow-hidden"
+                      >
+                        <Card className="p-3 sm:p-4 bg-slate-800/30 border-slate-700">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Asset:</span>
+                                <span className="text-white">{prediction.asset.name}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Direction:</span>
+                                <div className={`flex items-center space-x-1 ${prediction.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                                  {prediction.direction === 'up' ? (
+                                    <TrendingUp className="w-3 h-3" />
+                                  ) : (
+                                    <TrendingDown className="w-3 h-3" />
+                                  )}
+                                  <span>{prediction.direction.toUpperCase()}</span>
+                                </div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Leverage:</span>
+                                <span className="text-blue-400">{leverage}x</span>
+                              </div>
+                              {/* ✅ Show actual position size if available */}
+                              {positionSize && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Size:</span>
+                                  <span className="text-white font-mono">{positionSize}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Position:</span>
+                                <span className="text-white">${positionValue.toFixed(0)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Duration:</span>
+                                <span className="text-white">{prediction.timeWindow}s</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Entry Price:</span>
+                                <span className="text-white font-mono">${entryPrice.toFixed(1)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Exit Price:</span>
+                                <span className="text-white font-mono">${actualExitPrice.toFixed(1)}</span>
+                              </div>
+                              {/* ✅ Show data source */}
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Data:</span>
+                                <span className={`text-xs ${isRealData ? 'text-green-400' : 'text-yellow-400'}`}>
+                                  {isRealData ? 'API' : 'Estimated'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+
+                {/* Shareable Image Section */}
+                <motion.div variants={childVariants}>
+                  <Button
+                    onClick={handleGenerateImage}
+                    disabled={isGeneratingImage}
+                    className="w-full mb-3 bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    <ImageIcon className="w-4 h-4 mr-2" />
+                    {isGeneratingImage ? 'Generating Image...' : 'Create Shareable Image'}
+                  </Button>
+                  {generationError && (
+                    <p className="text-red-500 text-xs text-center mb-2 px-2">{generationError}</p>
+                  )}
+                  {shareableImageUrl && !generationError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-2 mb-3"
+                    >
+                      <img src={shareableImageUrl} alt="Trade Summary" className="rounded-lg border border-slate-700 mx-auto max-w-full h-auto" />
+                    </motion.div>
+                  )}
+                </motion.div>
+
+                {/* Stats Update */}
+                <motion.div
+                  variants={childVariants}
+                  className="bg-slate-800/30 rounded-lg p-3 sm:p-4"
                 >
-                  View Dashboard
-                </Button>
+                  <div className="text-center mb-3">
+                    <div className="text-slate-400 text-xs sm:text-sm">Updated Stats</div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+                    <div>
+                      <div className="text-xl sm:text-2xl font-bold text-white">
+                        {gameStats.totalGames}
+                      </div>
+                      <div className="text-slate-400 text-xs">Total Games</div>
+                    </div>
+
+                    <div>
+                      <div className="text-xl sm:text-2xl font-bold text-green-400">
+                        {gameStats.wins}
+                      </div>
+                      <div className="text-slate-400 text-xs">Wins</div>
+                    </div>
+
+                    <div>
+                      <div className="text-xl sm:text-2xl font-bold text-blue-400">
+                        {gameStats.winRate.toFixed(1)}%
+                      </div>
+                      <div className="text-slate-400 text-xs">Win Rate</div>
+                    </div>
+                  </div>
+
+                  {gameStats.currentStreak > 0 && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="mt-3 text-center"
+                    >
+                      <Badge variant="outline" className="text-yellow-400 border-yellow-400/50 bg-yellow-500/10">
+                        {gameStats.currentStreak} Win Streak!
+                      </Badge>
+                    </motion.div>
+                  )}
+                </motion.div>
+
+                {/* Action Buttons */}
+                <motion.div
+                  variants={childVariants}
+                  className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-2"
+                >
+                  <Button
+                    onClick={onPlayAgain}
+                    className={`w-full ${isWin
+                      ? 'bg-green-600 hover:bg-green-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                      } text-white`}
+                  >
+                    <PlayCircle className="w-4 h-4 mr-2" />
+                    Play Again
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
+                    className="w-full text-slate-300 border-slate-600 hover:bg-slate-700/50"
+                  >
+                    View Dashboard
+                  </Button>
+                </motion.div>
               </motion.div>
-            </motion.div>
+            </div>
           </DialogContent>
         </Dialog>
-      )
-      }
-    </AnimatePresence >
+      )}
+    </AnimatePresence>
   );
 }
