@@ -80,7 +80,10 @@ export type SignTypedDataFunction = (args: {
 }) => Promise<string>
 
 export class HyperliquidOrderService {
+  public static readonly TESTNET_API = 'https://api.hyperliquid-testnet.xyz'
+  public static readonly MAINNET_API = 'https://api.hyperliquid.xyz'
   public static readonly MARGIN_AMOUNT = 10
+
 
   private useTestnet: boolean = true
   private activePositions: Map<string, PositionInfo> = new Map()
@@ -92,27 +95,29 @@ export class HyperliquidOrderService {
   }
 
   public getApiUrl(): string {
-    return hyperliquid.getApiUrl()
+    return this.useTestnet ? HyperliquidOrderService.TESTNET_API : HyperliquidOrderService.MAINNET_API
   }
 
-  // Development mode aggressive pricing helper
+  // Development mode aggressive pricing helperAdd commentMore actions
   private applyDevModeAgressivePricing(price: number, isOpening: boolean): number {
-    console.log("!!!!!USING TESTNET PRICING!!!!!")
-    const isDevMode = hyperliquid.useTestnet
-    console.log("isDevMode", isDevMode)
+    const isDevMode = process.env.NEXT_PUBLIC_IS_TESTNET === 'true'
 
     if (!isDevMode) {
-      return price
+      const multiplier = isOpening ? 1.01 : 0.99
+      const adjustedPrice = price * multiplier
+      return adjustedPrice
     }
 
     // For opening positions: slightly higher price (1.01x) to ensure fills
     // For closing positions: slightly lower price (0.99x) to ensure fills
-    const multiplier = isOpening ? 1.03 : 0.97
+    const multiplier = isOpening ? 1.1 : 0.9
     const adjustedPrice = price * multiplier
 
     console.log(`🔧 DEV MODE: Adjusted price from ${price} to ${adjustedPrice} (${isOpening ? 'opening' : 'closing'})`)
     return adjustedPrice
   }
+
+
   private scheduleAutoClose(cloid: string, timeWindowMs: number): void {
     console.log(`⏰ Scheduling auto-close for position ${cloid} in ${timeWindowMs}ms`)
 
@@ -231,130 +236,13 @@ export class HyperliquidOrderService {
     return closeResult;
   }
 
-  private async executeCloseOrder(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    assetConfig: any,
-    isClosingLong: boolean,
-    price: string,
-    positionSize: string,
-    orderType: 'ioc' | 'market' | 'gtc',
-    attempt: number
-  ): Promise<{ success: boolean; exitPrice?: number; error?: string }> {
-    try {
-      const closeCloid = generateCloid()
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const closeOrder: any = {
-        a: assetConfig.assetId,
-        b: !isClosingLong,
-        p: price,
-        s: positionSize,
-        r: true,
-        c: closeCloid,
-      }
-
-      // Set order type based on strategy
-      switch (orderType) {
-        case 'ioc':
-          closeOrder.t = { limit: { tif: 'Ioc' } }
-          break
-        case 'gtc':
-          closeOrder.t = { limit: { tif: 'Gtc' } }
-          break
-        case 'market':
-          // For market orders, remove price and use market type
-          delete closeOrder.p
-          closeOrder.t = { market: {} }
-          break
-      }
-
-      console.log(`🔄 Attempt ${attempt}: ${orderType.toUpperCase()} close order:`, JSON.stringify(closeOrder, null, 2))
-
-      const action = {
-        type: 'order',
-        orders: [closeOrder],
-        grouping: 'na' as const
-      }
-      const nonce = Date.now() + attempt // Ensure unique nonce
-      const agentWallet = hyperliquidAgent.getAgentWallet()
-
-      if (!agentWallet || !agentWallet.privateKey) {
-        throw new Error('Agent wallet not available')
-      }
-
-      const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`)
-      const signature = await signL1Action({
-        wallet: account,
-        action,
-        nonce,
-        isTestnet: this.useTestnet
-      })
-
-      const exchangeRequest = { action, signature, nonce }
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000) // Longer timeout for retries
-
-      const response = await fetch(`${this.getApiUrl()}/exchange`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(exchangeRequest),
-        signal: controller.signal
-      })
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      const responseText = await response.text()
-      let result
-      try {
-        result = JSON.parse(responseText)
-      } catch (parseError) {
-        console.error('Error parsing response:', parseError)
-        throw new Error(`Invalid JSON response: ${responseText}`)
-      }
-
-      console.log(`📥 Attempt ${attempt} response:`, JSON.stringify(result, null, 2))
-
-      if (result.status === 'ok') {
-        const orderStatus = result.response?.data?.statuses?.[0]
-        if (orderStatus?.filled) {
-          const exitPrice = parseFloat(orderStatus.filled?.avgPx || orderStatus.avgPx || '0')
-          console.log(`✅ Attempt ${attempt} SUCCESS: Position closed at ${exitPrice}`)
-          return { success: true, exitPrice }
-        } else if (orderStatus?.resting && orderType === 'gtc') {
-          // For GTC orders, we'll wait a bit and check if it gets filled
-          console.log(`⏳ GTC order resting, waiting for fill...`)
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          // Note: In a real implementation, you'd want to check order status
-          // For now, we'll treat resting GTC as partial success
-          return { success: false, error: 'Order resting but not filled yet' }
-        } else {
-          return { success: false, error: `Order not filled: ${JSON.stringify(orderStatus)}` }
-        }
-      } else {
-        return { success: false, error: `Exchange error: ${JSON.stringify(result)}` }
-      }
-    } catch (error) {
-      console.error(`❌ Attempt ${attempt} failed:`, error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }
-    }
-  }
-
   private async closePositionAtMarketPrice(position: PositionInfo): Promise<{
     success: boolean
     exitPrice?: number
     error?: string
   }> {
     try {
-      console.log(`🔄 BULLETPROOF CLOSE: Starting position ${position.cloid} closure with fallback strategies`)
+      console.log(`🔄 Closing position ${position.cloid} at market price`)
       console.log(`📊 Position data:`, {
         asset: position.asset,
         direction: position.direction,
@@ -368,7 +256,6 @@ export class HyperliquidOrderService {
         throw new Error(`Invalid position data: asset=${position.asset}, direction=${position.direction}`)
       }
 
-      // Size validation and fallback
       let positionSize = position.size
       if (!positionSize || positionSize === '0' || positionSize === '' || positionSize === 'undefined') {
         console.warn(`⚠️ Position size missing or invalid: ${positionSize}, trying fallback strategies`)
@@ -377,11 +264,11 @@ export class HyperliquidOrderService {
           const possibleUsdValues = [10, 20, 30, 40, 50]
           for (const usdValue of possibleUsdValues) {
             const calculatedSize = (usdValue / entryPrice).toFixed(6)
-            console.log(`🔧 Trying fallback: ${usdValue} / ${entryPrice} = ${calculatedSize}`)
+            console.log(`🔧 Trying fallback: $${usdValue} / $${entryPrice} = ${calculatedSize}`)
             const sizeNum = parseFloat(calculatedSize)
             if (sizeNum > 0.00001 && sizeNum < 100) {
               positionSize = calculatedSize
-              console.log(`✅ Using fallback size: ${positionSize} (based on ${usdValue} position)`)
+              console.log(`✅ Using fallback size: ${positionSize} (based on $${usdValue} position)`)
               break
             }
           }
@@ -392,182 +279,173 @@ export class HyperliquidOrderService {
         }
       }
 
-      // Get current price
+      console.log(`📊 Final position details: ${position.asset} ${position.direction} size=${positionSize}`)
+
       const currentPrices = await this.getCurrentPrices()
       const currentPrice = currentPrices[position.asset]
 
       if (!currentPrice) {
         console.warn(`⚠️ Could not get current price for ${position.asset}, using fallback`)
         const fallbackPrice = position.fillPrice || position.entryPrice || 50000
-        return { success: true, exitPrice: fallbackPrice }
+        return {
+          success: true,
+          exitPrice: fallbackPrice
+        }
       }
 
       const assetConfig = await getAssetConfig(position.asset)
       if (!assetConfig || assetConfig.assetId === undefined) {
         console.warn(`⚠️ Could not get asset config for ${position.asset}, using current price as exit`)
-        return { success: true, exitPrice: currentPrice }
+        return {
+          success: true,
+          exitPrice: currentPrice
+        }
       }
 
       const isClosingLong = position.direction === 'up'
+      // Apply dev mode aggressive pricing for closing positionsAdd commentMore actions
+      const adjustedPrice = this.applyDevModeAgressivePricing(currentPrice, false)
+      const aggressivePrice = formatPrice(adjustedPrice, assetConfig.szDecimals)
 
-      // STRATEGY 1: IoC with dev mode aggressive pricing (0.99x)
-      console.log(`🎯 STRATEGY 1: IoC with aggressive pricing`)
-      const adjustedPrice1 = this.applyDevModeAgressivePricing(currentPrice, false) // 0.99x in dev
-      const aggressivePrice1 = formatPrice(adjustedPrice1, assetConfig.szDecimals)
+      if (!aggressivePrice || !positionSize) {
+        console.warn(`⚠️ Missing required values, using market price: aggressivePrice=${aggressivePrice}, size=${positionSize}`)
+        return {
+          success: true,
+          exitPrice: currentPrice
+        }
+      }
 
-      const result1 = await this.executeCloseOrder(assetConfig, isClosingLong, aggressivePrice1, positionSize, 'ioc', 1)
-      if (result1.success) return result1
+      console.log(`💰 Closing at aggressive price: ${aggressivePrice} (market: ${currentPrice}) size: ${positionSize}`)
+      const closeCloid = generateCloid()
+      const closeOrder = {
+        a: assetConfig.assetId,
+        b: !isClosingLong,
+        p: aggressivePrice,
+        s: positionSize,
+        r: true,
+        t: { limit: { tif: 'Ioc' } },
+        c: closeCloid,
+      }
 
-      // STRATEGY 2: IoC with MORE aggressive pricing (0.95x)
-      console.log(`🎯 STRATEGY 2: IoC with MORE aggressive pricing (5% worse)`)
-      const veryAggressivePrice = formatPrice(currentPrice * 0.95, assetConfig.szDecimals)
+      console.log('🔄 Close order details:', JSON.stringify(closeOrder, null, 2))
+      const action = {
+        type: 'order',
+        orders: [closeOrder],
+        grouping: 'na' as const
+      }
+      const nonce = Date.now()
+      const agentWallet = hyperliquidAgent.getAgentWallet()
+      if (!agentWallet || !agentWallet.privateKey) {
+        console.warn('⚠️ Agent wallet not available, using market price as exit')
+        return {
+          success: true,
+          exitPrice: currentPrice
+        }
+      }
 
-      const result2 = await this.executeCloseOrder(assetConfig, isClosingLong, veryAggressivePrice, positionSize, 'ioc', 2)
-      if (result2.success) return result2
+      const account = privateKeyToAccount(agentWallet.privateKey as `0x${string}`)
+      console.log('🔄 Signing close order...')
+      try {
+        const signature = await signL1Action({
+          wallet: account,
+          action,
+          nonce,
+          isTestnet: this.useTestnet
+        })
+        console.log('✅ Close order signed successfully')
+        const exchangeRequest = { action, signature, nonce }
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
 
-      // STRATEGY 3: Market Order (should always fill)
-      console.log(`🎯 STRATEGY 3: Market order (highest priority)`)
+        const response = await fetch(`${this.getApiUrl()}/exchange`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(exchangeRequest),
+          signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+        const responseText = await response.text()
 
-      const result3 = await this.executeCloseOrder(assetConfig, isClosingLong, '0', positionSize, 'market', 3)
-      if (result3.success) return result3
-
-      // STRATEGY 4: GTC with very aggressive pricing (0.90x) - will sit in order book
-      console.log(`🎯 STRATEGY 4: GTC order with very aggressive pricing (10% worse)`)
-      const extremePrice = formatPrice(currentPrice * 0.90, assetConfig.szDecimals)
-
-      const result4 = await this.executeCloseOrder(assetConfig, isClosingLong, extremePrice, positionSize, 'gtc', 4)
-      if (result4.success) return result4
-
-      // STRATEGY 5: Partial close attempts (if position is large)
-      const sizeNum = parseFloat(positionSize)
-      if (sizeNum > 0.01) {
-        console.log(`🎯 STRATEGY 5: Partial close attempts`)
-        const partialSizes = [
-          (sizeNum * 0.5).toFixed(6),  // 50%
-          (sizeNum * 0.25).toFixed(6), // 25%
-          (sizeNum * 0.1).toFixed(6)   // 10%
-        ]
-
-        for (let i = 0; i < partialSizes.length; i++) {
-          const partialSize = partialSizes[i]
-          console.log(`🔄 Trying partial close: ${partialSize} (${((parseFloat(partialSize) / sizeNum) * 100).toFixed(1)}% of position)`)
-
-          const partialResult = await this.executeCloseOrder(assetConfig, isClosingLong, extremePrice, partialSize, 'market', 5 + i)
-          if (partialResult.success) {
-            console.log(`⚠️ PARTIAL SUCCESS: Closed ${partialSize} of ${positionSize} at ${partialResult.exitPrice}`)
-            return partialResult // Return partial success - better than nothing
+        if (!response.ok) {
+          console.warn(`⚠️ Close order HTTP error: ${response.status}, using market price`)
+          return {
+            success: true,
+            exitPrice: currentPrice
           }
         }
+        let result
+        try {
+          result = JSON.parse(responseText)
+        } catch (parseError) {
+          console.log(parseError)
+          console.warn('⚠️ Failed to parse close order response, using market price')
+          return {
+            success: true,
+            exitPrice: currentPrice
+          }
+        }
+        console.log('📥 Close order response:', JSON.stringify(result, null, 2))
+        if (result.status === 'ok') {
+          const orderStatus = result.response?.data?.statuses?.[0]
+          if (orderStatus?.filled) {
+            const exitPrice = parseFloat(orderStatus.filled?.avgPx || orderStatus.avgPx || currentPrice.toString())
+            console.log(`✅ Position closed successfully at $${exitPrice}`)
+            return {
+              success: true,
+              exitPrice: exitPrice
+            }
+          } else {
+            console.warn('⚠️ Close order not filled, using market price')
+            return {
+              success: true,
+              exitPrice: currentPrice
+            }
+          }
+        } else {
+          console.warn('⚠️ Close order failed, using market price')
+          return {
+            success: true,
+            exitPrice: currentPrice
+          }
+        }
+      } catch (signingOrApiError) {
+        console.warn('⚠️ Error signing or sending close order:', signingOrApiError)
+        return {
+          success: true,
+          exitPrice: currentPrice
+        }
       }
-
-      // STRATEGY 6: Ultimate fallback - use current market price as "closed"
-      console.log(`🎯 STRATEGY 6: Ultimate fallback - marking as closed at market price`)
-      console.warn(`⚠️ All close strategies failed, marking position as closed at market price: ${currentPrice}`)
-
-      return {
-        success: true,
-        exitPrice: currentPrice // We'll treat this as closed at market price
-      }
-
     } catch (error) {
-      console.error('❌ Critical error in bulletproof close:', error)
-
-      // Final fallback
+      console.warn('⚠️ Error in closePositionAtMarketPrice:', error)
       try {
         const currentPrices = await this.getCurrentPrices()
-        const fallbackPrice = currentPrices[position.asset] || position.fillPrice || position.entryPrice || 50000
-        console.log(`✅ Emergency fallback: Using price ${fallbackPrice}`)
-        return { success: true, exitPrice: fallbackPrice }
-      } catch (finalError) {
-        console.error('❌ Even emergency fallback failed:', finalError)
-        const ultimatePrice = position.fillPrice || position.entryPrice || 50000
-        return { success: true, exitPrice: ultimatePrice }
-      }
-    }
-  }
-
-  async initializeAgent(
-    userAddress: string,
-    masterSignTypedData: SignTypedDataFunction
-  ): Promise<AgentWallet> {
-    console.log('🔍 Checking for existing agent for user:', userAddress)
-    try {
-      const testMessage = {
-        test: 'verification',
-        address: userAddress.toLowerCase(),
-        timestamp: Date.now()
-      }
-      const testDomain = {
-        name: 'Test',
-        version: '1',
-        chainId: this.useTestnet ? 421614 : 42161,
-        verifyingContract: '0x0000000000000000000000000000000000000000'
-      }
-      const testTypes = {
-        Test: [
-          { name: 'test', type: 'string' },
-          { name: 'address', type: 'address' },
-          { name: 'timestamp', type: 'uint256' }
-        ]
-      }
-      console.log('🔍 Testing signature with expected address:', userAddress)
-      const testSig = await masterSignTypedData({
-        domain: testDomain,
-        types: testTypes,
-        primaryType: 'Test',
-        message: testMessage
-      })
-      const recoveredAddress = ethers.verifyTypedData(testDomain, testTypes, testMessage, testSig)
-      console.log('🔍 Test signature recovered address:', recoveredAddress)
-      console.log('🔍 Expected address:', userAddress)
-      console.log('🔍 Addresses match:', recoveredAddress.toLowerCase() === userAddress.toLowerCase())
-      if (recoveredAddress.toLowerCase() !== userAddress.toLowerCase()) {
-        throw new Error(`Address mismatch! Expected ${userAddress}, got ${recoveredAddress}. Please ensure you're connected to the correct account in your wallet.`)
-      }
-    } catch (error) {
-      console.error('❌ Account verification failed:', error)
-      throw new Error(`Account verification failed: ${error}`)
-    }
-
-    let agent = hyperliquidAgent.loadAgent(userAddress)
-    if (!agent) {
-      console.log('🔧 No agent found, creating new one...')
-      agent = hyperliquidAgent.generateAgentWallet()
-      console.log('✅ Generated new agent wallet:', agent.address)
-      hyperliquidAgent.saveAgent(userAddress)
-      console.log('✅ Saved unapproved agent to localStorage')
-    } else {
-      console.log('✅ Found existing agent:', agent.address, 'Approved:', agent.isApproved)
-    }
-
-    if (!agent.isApproved) {
-      console.log('🔍 Agent not approved yet, requesting approval from user...')
-      const approvalResult = await hyperliquidAgent.approveAgent(
-        agent,
-        masterSignTypedData,
-        'Hyper-rektAgent'
-      )
-      if (!approvalResult.success) {
-        if (approvalResult.needsDeposit) {
-          console.log('⚠️ Deposit required for user account')
-          throw new Error('NEEDS_DEPOSIT')
+        const fallbackPrice = currentPrices[position.asset]
+        if (fallbackPrice) {
+          console.log(`✅ Using fallback market price as exit: $${fallbackPrice}`)
+          return {
+            success: true,
+            exitPrice: fallbackPrice
+          }
         }
-        throw new Error(approvalResult.error || 'Failed to approve agent wallet')
+      } catch (fallbackError) {
+        console.warn('⚠️ Fallback price fetch also failed:', fallbackError)
       }
-      console.log('✅ Agent approved successfully!')
-      hyperliquidAgent.saveAgent(userAddress)
-      console.log('✅ Saved approved agent to localStorage')
-    } else {
-      console.log('✅ Using existing approved agent:', agent.address)
+      const ultimateFallback = position.fillPrice || position.entryPrice || 50000
+      console.log(`✅ Using ultimate fallback price: $${ultimateFallback}`)
+      return {
+        success: true,
+        exitPrice: ultimateFallback
+      }
     }
-    return agent
   }
+
 
   async setAssetLeverage(
     asset: string,
     leverage: number,
-    signTypedDataAsync: SignTypedDataFunction,
-    userAddress: string,
     isCross: boolean = false
   ): Promise<{ success: boolean; error?: string }> {
     try {
@@ -706,8 +584,6 @@ export class HyperliquidOrderService {
       const leverageResult = await this.setAssetLeverage(
         request.asset,
         targetLeverage,
-        signTypedDataAsync,
-        userAddress,
         false
       )
       if (!leverageResult.success) {
@@ -719,7 +595,7 @@ export class HyperliquidOrderService {
       console.log(`✅ STEP 1 COMPLETE: ${request.asset} leverage set to ${targetLeverage}x`)
 
       const expectedPositionValue = 10 * targetLeverage
-      // Apply dev mode aggressive pricing for opening positions
+      // Apply dev mode aggressive pricing for opening positionsAdd commentMore actions
       const adjustedPrice = this.applyDevModeAgressivePricing(request.price, true)
       const orderPrice = formatPrice(adjustedPrice, assetConfig.szDecimals);
       const orderSize = calculateOrderSizeWithTrueLeverage(
@@ -757,7 +633,7 @@ export class HyperliquidOrderService {
         direction: request.direction,
         marketPrice: marketPrice,
         orderPrice: orderPrice,
-        priceAdjustment: process.env.NODE_ENV === 'development' || process.env.HYPERLIQUID_DEV_MODE === 'true' ? 'Dev mode: +1%' : 'None (using market price)',
+        priceAdjustment: 'None (using market price)',
         finalOrderSize: orderSize,
         actualOrderValue: actualOrderValue,
         timeWindow: request.timeWindow,
@@ -768,7 +644,7 @@ export class HyperliquidOrderService {
         const order = {
           a: assetConfig.assetId,
           b: request.direction === 'up',
-          p: orderPrice, // Use dev-adjusted price
+          p: orderPrice, // Use market price instead of aggressive price
           s: orderSize,
           r: false,
           t: { limit: { tif: 'Ioc' } },
@@ -966,6 +842,82 @@ export class HyperliquidOrderService {
       return null
     }
   }
+  async initializeAgent(
+    userAddress: string,
+    masterSignTypedData: SignTypedDataFunction
+  ): Promise<AgentWallet> {
+    console.log('🔍 Checking for existing agent for user:', userAddress)
+    try {
+      const testMessage = {
+        test: 'verification',
+        address: userAddress.toLowerCase(),
+        timestamp: Date.now()
+      }
+      const testDomain = {
+        name: 'Test',
+        version: '1',
+        chainId: this.useTestnet ? 421614 : 42161,
+        verifyingContract: '0x0000000000000000000000000000000000000000'
+      }
+      const testTypes = {
+        Test: [
+          { name: 'test', type: 'string' },
+          { name: 'address', type: 'address' },
+          { name: 'timestamp', type: 'uint256' }
+        ]
+      }
+      console.log('🔍 Testing signature with expected address:', userAddress)
+      const testSig = await masterSignTypedData({
+        domain: testDomain,
+        types: testTypes,
+        primaryType: 'Test',
+        message: testMessage
+      })
+      const recoveredAddress = ethers.verifyTypedData(testDomain, testTypes, testMessage, testSig)
+      console.log('🔍 Test signature recovered address:', recoveredAddress)
+      console.log('🔍 Expected address:', userAddress)
+      console.log('🔍 Addresses match:', recoveredAddress.toLowerCase() === userAddress.toLowerCase())
+      if (recoveredAddress.toLowerCase() !== userAddress.toLowerCase()) {
+        throw new Error(`Address mismatch! Expected ${userAddress}, got ${recoveredAddress}. Please ensure you're connected to the correct account in your wallet.`)
+      }
+    } catch (error) {
+      console.error('❌ Account verification failed:', error)
+      throw new Error(`Account verification failed: ${error}`)
+    }
+
+    let agent = hyperliquidAgent.loadAgent(userAddress)
+    if (!agent) {
+      console.log('🔧 No agent found, creating new one...')
+      agent = hyperliquidAgent.generateAgentWallet()
+      console.log('✅ Generated new agent wallet:', agent.address)
+      hyperliquidAgent.saveAgent(userAddress)
+      console.log('✅ Saved unapproved agent to localStorage')
+    } else {
+      console.log('✅ Found existing agent:', agent.address, 'Approved:', agent.isApproved)
+    }
+
+    if (!agent.isApproved) {
+      console.log('🔍 Agent not approved yet, requesting approval from user...')
+      const approvalResult = await hyperliquidAgent.approveAgent(
+        agent,
+        masterSignTypedData,
+        'Hyper-rektAgent'
+      )
+      if (!approvalResult.success) {
+        if (approvalResult.needsDeposit) {
+          console.log('⚠️ Deposit required for user account')
+          throw new Error('NEEDS_DEPOSIT')
+        }
+        throw new Error(approvalResult.error || 'Failed to approve agent wallet')
+      }
+      console.log('✅ Agent approved successfully!')
+      hyperliquidAgent.saveAgent(userAddress)
+      console.log('✅ Saved approved agent to localStorage')
+    } else {
+      console.log('✅ Using existing approved agent:', agent.address)
+    }
+    return agent
+  }
 
   startPnLPolling(
     userAddress: string,
@@ -1112,4 +1064,4 @@ export class HyperliquidOrderService {
     this.useTestnet = useTestnet
   }
 }
-export const hyperliquidOrders = new HyperliquidOrderService(true)
+export const hyperliquidOrders = new HyperliquidOrderService(process.env.NEXT_PUBLIC_IS_TESTNET === 'true')

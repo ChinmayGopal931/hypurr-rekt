@@ -504,4 +504,4 @@ export class HyperliquidAgentService {
 }
 
 // Global agent service instance
-export const hyperliquidAgent = new HyperliquidAgentService(true) // Default to testnet
+export const hyperliquidAgent = new HyperliquidAgentService(process.env.NEXT_PUBLIC_IS_TESTNET === 'true') // Default to testnet

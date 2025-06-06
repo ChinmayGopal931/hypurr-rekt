@@ -369,4 +369,4 @@ export class HyperliquidService {
   }
 }
 
-export const hyperliquid = new HyperliquidService(true);
+export const hyperliquid = new HyperliquidService(process.env.NEXT_PUBLIC_IS_TESTNET === 'true');

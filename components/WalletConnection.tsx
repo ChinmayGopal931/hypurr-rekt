@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from './ui/alert'
 import { Wallet, AlertTriangle, ExternalLink, Activity, Loader2, CheckCircle } from 'lucide-react'
 import { usePositions } from '@/hooks/useHyperliquid'
 import type { PositionInfo } from '@/service/hyperliquidOrders'
+import { hyperliquid } from '@/service/hyperliquid'
 
 interface WalletConnectionProps {
   onWalletReady?: () => void
@@ -39,7 +40,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
   }, [])
 
   // Check if we're on the correct network (Arbitrum Sepolia for testnet)
-  const isCorrectNetwork = useMemo(() => chain?.id === 421614, [chain?.id])
+  const isCorrectNetwork = useMemo(() => chain?.id === (hyperliquid.useTestnet ? 421614 : 42161), [chain?.id])
 
   // Format positions for display
   const formattedPositions = useMemo((): FormattedPosition[] => {
@@ -158,7 +159,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
             <AlertDescription className="text-yellow-400">
               <div className="font-semibold mb-1">Wrong Network Detected</div>
               <div className="text-sm">
-                Please switch to Arbitrum Sepolia testnet (Chain ID: 421614) for Hyperliquid trading.
+                Please switch to {hyperliquid.useTestnet ? "Arbitrum Sepolia testnet (Chain ID: 421614)" : "Arbitrum (Chain ID: 42161)"} for Hyperliquid trading.
                 {networkStatus.name && (
                   <span className="block mt-1">
                     Currently connected to: {networkStatus.name} (Chain ID: {chain?.id})
@@ -310,7 +311,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
             <div className="space-y-2">
               <div className="font-semibold">Testnet Trading</div>
               <div className="text-sm">
-                This app uses Hyperliquid testnet. You&apos;ll need to switch to Arbitrum Sepolia to sign transactions.
+                This app uses Hyperliquid testnet. You&apos;ll need to switch to {hyperliquid.useTestnet ? "Arbitrum Sepolia" : "Arbitrum"} to sign transactions.
               </div>
               <a
                 href="https://app.hyperliquid-testnet.xyz/drip"
