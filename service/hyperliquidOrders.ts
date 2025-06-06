@@ -97,7 +97,9 @@ export class HyperliquidOrderService {
 
   // Development mode aggressive pricing helper
   private applyDevModeAgressivePricing(price: number, isOpening: boolean): number {
+    console.log("!!!!!USING TESTNET PRICING!!!!!")
     const isDevMode = hyperliquid.useTestnet
+    console.log("isDevMode", isDevMode)
 
     if (!isDevMode) {
       return price
@@ -105,7 +107,7 @@ export class HyperliquidOrderService {
 
     // For opening positions: slightly higher price (1.01x) to ensure fills
     // For closing positions: slightly lower price (0.99x) to ensure fills
-    const multiplier = isOpening ? 1.01 : 0.99
+    const multiplier = isOpening ? 1.03 : 0.97
     const adjustedPrice = price * multiplier
 
     console.log(`🔧 DEV MODE: Adjusted price from ${price} to ${adjustedPrice} (${isOpening ? 'opening' : 'closing'})`)
