@@ -273,10 +273,6 @@ export default function LandingPage() {
                   </svg>
                 </a>
               </div>
-              <div className="flex items-center space-x-6 text-sm text-slate-400">
-                <span>Testnet</span>
-                <span>Side Project</span>
-              </div>
             </div>
 
             <div className="mt-6 text-center">
