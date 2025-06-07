@@ -272,13 +272,6 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="mt-6 text-center">
-              <div className="flex items-center justify-center space-x-2 text-slate-500 text-sm">
-                <img src="/assets/images/hypurr/meditation.png" alt="Cat" className="w-6 h-6" />
-                <span>A thing I built</span>
-                <img src="/assets/images/hypurr/sleepy.png" alt="Cat" className="w-6 h-6" />
-              </div>
-            </div>
           </div>
         </footer>
       </div>
