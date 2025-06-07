@@ -121,9 +121,6 @@ export default function LandingPage() {
                 <img src="/assets/HyperCore mint.svg" alt="Speed" className="w-20 h-8 object-contain" />
 
               </a>
-              <div className="text-sm text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30">
-                TESTNET
-              </div>
             </div>
           </div>
         </header>
