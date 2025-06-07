@@ -153,22 +153,13 @@ export default function LandingPage() {
                       <img src="/assets/images/hypurr/liquid.png" alt="Speed" className="w-full h-full object-contain" />
                     </div>
                     <div className="font-semibold text-emerald-400">15-60 Seconds</div>
-                    <div className="text-sm text-slate-400">Quick trades</div>
-                  </div>
-                  <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
-                    <div className="w-8 h-8 mx-auto mb-2">
-                      <img src="/assets/images/hypurr/crystalball.png" alt="Assets" className="w-full h-full object-contain" />
-                    </div>
-                    <div className="font-semibold text-emerald-400">All HL Assets</div>
-                    <div className="text-sm text-slate-400">Full Hyperliquid catalog</div>
                   </div>
                   <div className="bg-slate-900/50 border border-emerald-500/20 rounded-xl p-4 text-center">
                     <div className="w-8 h-8 mx-auto mb-2">
                       <img src="/assets/images/hypurr/theories.png" alt="Leverage" className="w-full h-full object-contain" />
                     </div>
                     <div className="font-semibold text-emerald-400">Max Leverage</div>
-                    <div className="text-sm text-slate-400">Highest possible for each asset</div>
-                  </div>
+                    =                  </div>
                 </div>
 
 
