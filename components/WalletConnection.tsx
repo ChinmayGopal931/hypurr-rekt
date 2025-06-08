@@ -309,18 +309,18 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
           <AlertTriangle className="h-4 w-4 text-blue-400" />
           <AlertDescription className="text-blue-400">
             <div className="space-y-2">
-              <div className="font-semibold">Testnet Trading</div>
+              <div className="font-semibold">{hyperliquid.useTestnet ? "Testnet" : "Mainnet"} Trading</div>
               <div className="text-sm">
-                This app uses Hyperliquid testnet. You&apos;ll need to switch to {hyperliquid.useTestnet ? "Arbitrum Sepolia" : "Arbitrum"} to sign transactions.
+                This app uses Hyperliquid {hyperliquid.useTestnet ? "testnet" : "mainnet"}. You&apos;ll need to switch to {hyperliquid.useTestnet ? "Arbitrum Sepolia" : "Arbitrum"} to sign transactions.
               </div>
-              <a
+              {hyperliquid.useTestnet && <a
                 href="https://app.hyperliquid-testnet.xyz/drip"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center text-sm text-white hover:text-blue-200 underline"
               >
                 Get Testnet USDC <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
+              </a>}
             </div>
           </AlertDescription>
         </Alert>
