@@ -197,7 +197,7 @@ export function WalletConnection({ onWalletReady }: WalletConnectionProps): JSX.
         <div>
           <h3 className="text-xl font-bold text-white mb-2">Connect Your Wallet</h3>
           <p className="text-slate-400 text-sm">
-            Connect your wallet to place real predictions on Hyperliquid Testnet
+            Connect your wallet to place real predictions on Hyperliquid {hyperliquid.useTestnet ? "Testnet" : "Mainnet"}
           </p>
         </div>
 
